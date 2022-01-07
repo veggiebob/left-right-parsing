@@ -34,6 +34,9 @@ pub struct ExprParser {
 }
 pub struct StringParser();
 pub struct NatParser();
+pub struct ListParser {
+    pub separator: String
+}
 
 /// Because of the way parsing works,
 /// all infix operators are right-associative.
@@ -247,41 +250,51 @@ impl Parser for ParentheticalParser {
     type Output = Expr;
 
     fn parse(&self, content: &String, consume: bool, meta: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        // (<expr>)
         if let Some('(') = char_at(content, 0) {
-            // find the matching parenthesis
-            let depth = &mut 0;
-            // includes '(', does not include ')'
-            let expr_str = take_while(content, |&c| {
-                if c == '(' {
-                    *depth += 1;
-                } else if c == ')' {
-                    *depth -= 1;
-                }
-                *depth > 0
-            });
-            if *depth > 0 {
-                Err("Could not find matching ')'".into())
+            if let Some((_, rest)) = take(&content, 1) {
+                // '(' used
+                // even though we're only excluding one character, we can't guarantee it has a matching ')'
+                self.expr_parser.parse(&rest, false, meta.increment_depth())
+                    .and_then(|possibles| {
+                        let ps: HashSet<(Expr, usize)> = possibles.into_iter()
+                            .filter_map(|(expr, used)| {
+                                    if let Some(')') = take(&rest, used).and_then(|s| char_at(&s.1, 0)) {
+                                        // complete parse!
+                                        let used = 2 + used; // include parenthesis
+                                        if consume && used < rest.len() {
+                                            None
+                                        } else {
+                                            Some((
+                                                expr,
+                                                used
+                                            ))
+                                        }
+                                    } else {
+                                        None
+                                    }
+                            })
+                            .collect();
+                        if ps.len() == 0 {
+                            Err("No possibilities!".into())
+                        } else {
+                            Ok(ps)
+                        }
+                    })
             } else {
-                if consume && expr_str.0.len() + 1 < content.len() {
-                    Err(
-                        "Could not consume entire content when parsing parenthetical expression".into()
-                    )
-                } else {
-                    self.expr_parser.parse(
-                        &take(&expr_str.0, 1).unwrap().1, // remove the first '('
-                        true, meta.increment_depth())
-                        .map(|solutions| {
-                            solutions.into_iter().map(
-                                |(expr, used)| {
-                                    (expr, used + 2) // include parentheses
-                                }
-                            ).collect()
-                        })
-                }
+                Err("String is not long enough.".into())
             }
         } else {
             Err("Expected '(', got nothing".into())
         }
+    }
+}
+
+impl Parser for ListParser {
+    type Output = Expr;
+
+    fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        todo!()
     }
 }
 

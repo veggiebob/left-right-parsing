@@ -18,6 +18,7 @@ pub enum Expr {
     Nat(LONat),
     Str(LOString),
     Infix(Box<Expr>, String, Box<Expr>),
+    List(Vec<Box<Expr>>)
 }
 
 #[derive(Eq, PartialEq, Debug)]
