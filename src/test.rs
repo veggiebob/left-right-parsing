@@ -407,6 +407,7 @@ fn list_test() {
     );
 }
 
+#[test]
 fn parse_deep_list_expressions() {
     // combine infix and parenthetical parser for big expression parsing power!
     let string_parser = Rc::new(create_parser!(StringParser()));
@@ -439,4 +440,33 @@ fn parse_deep_list_expressions() {
     parser.parsers.borrow_mut().push(Rc::downgrade(&infix_parser));
 
     // work in progress (add list parser here)
+    let list_parser = Rc::new(create_parser!(ListParser {
+        separator: ' ', // ooh! space separator!
+        expr_parser: Rc::clone(&parser)
+    }));
+    parser.parsers.borrow_mut().push(Rc::downgrade(&list_parser));
+
+    // ready to test!
+    let test = "[1 + 2 3 \"hello\" + 1]".to_string();
+    assert_eq!(
+        parser.parse(&test, true, ParseMetaData::new()),
+        Ok(hashset![
+            (
+                Expr::List(vec![
+                    Infix(
+                        Nat(LONat { content: 1 }).into(),
+                        "+".to_string(),
+                        Nat(LONat { content: 2 }).into()
+                    ).into(),
+                    Nat(LONat { content: 3 }).into(),
+                    Infix(
+                        Str(LOString { content: "hello".into() }).into(),
+                        "+".to_string(),
+                        Nat(LONat { content: 1 }).into()
+                    ).into()
+                ]),
+                21
+            )
+        ])
+    )
 }

@@ -324,36 +324,39 @@ impl Parser for ListParser {
                         |(exprs, prev_used)| {
                             if let Some((_prev_exprs, next)) = take(&rest, prev_used) {
                                 match char_at(&next, 0) {
-                                    Some(',') => {
-                                        // branch!
-                                        if let Some((_comma, next)) = take(&next, 1) {
-                                            self.expr_parser.parse(&next, false, meta)
-                                                .map(|parses| {
-                                                    parses.into_iter()
-                                                        .map(|(expr, used)| {
-                                                            // branching happens here
-                                                            let mut exprs = exprs.clone();
-                                                            exprs.extend(vec![expr]);
-                                                            (
-                                                                exprs,
-                                                                // add one for ','
-                                                                prev_used + 1 + used
-                                                            )
-                                                        }).collect::<HashSet<_>>()
-                                                })
-                                                .ok()
+                                    Some(c) => {
+                                        if c == self.separator {
+                                            // branch!
+                                            if let Some((_comma, next)) = take(&next, 1) {
+                                                self.expr_parser.parse(&next, false, meta)
+                                                    .map(|parses| {
+                                                        parses.into_iter()
+                                                            .map(|(expr, used)| {
+                                                                // branching happens here
+                                                                let mut exprs = exprs.clone();
+                                                                exprs.extend(vec![expr]);
+                                                                (
+                                                                    exprs,
+                                                                    // add one for ','
+                                                                    prev_used + 1 + used
+                                                                )
+                                                            }).collect::<HashSet<_>>()
+                                                    })
+                                                    .ok()
+                                            } else {
+                                                None // expected an expression after the comma!
+                                            }
+                                        } else if c == ']' {
+                                            if !consume || prev_used >= rest.len() - 1 {
+                                                // add one for ']'
+                                                finished.insert((exprs, prev_used + 1));
+                                            }
+                                            None
                                         } else {
-                                            None // expected an expression after the comma!
+                                            None // was not a separator nor ']', so
                                         }
                                     },
-                                    Some(']') => {
-                                        if !consume || prev_used >= rest.len() - 1 {
-                                            // add one for ']'
-                                            finished.insert((exprs, prev_used + 1));
-                                        }
-                                        None
-                                    },
-                                    _ => None
+                                    _ => None // there was not another character
                                 }
                             } else {
                                 None // did not find an end to the list
