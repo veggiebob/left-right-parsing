@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use crate::create_parser;
-use crate::parse::{ParseMetaData, Parser};
+use crate::parse::{ListParser, ParseMetaData, Parser};
 use crate::funcs::{join, substring, take, take_while};
 use crate::lang_obj::{Expr, LONat, LOString};
 use crate::lang_obj::Expr::{Infix, Nat, Str};
@@ -89,7 +89,11 @@ fn test_expr_parse() {
 
     let content = "\"test string\"".to_string();
     let result = parser.parse(&content, true, context);
-    println!("{:?}", result);
+    // println!("{:?}", result);
+    assert_eq!(
+        result,
+        Ok(hashset![(Str("test string".to_string().into()), 13)])
+    )
 }
 
 #[test]
@@ -261,7 +265,7 @@ fn test_extended_expressions() {
 }
 
 #[test]
-fn parse_deep_expression() {
+fn parse_deep_infix() {
     // combine infix and parenthetical parser for big expression parsing power!
     let string_parser = Rc::new(create_parser!(StringParser()));
     let nat_parser = Rc::new(create_parser!(NatParser()));
@@ -324,6 +328,115 @@ fn parse_deep_expression() {
                 )
             ]
         )
-    )
+    );
 
+    // now let's try forcing left-precedence
+    let test = "(12 + 12) + 12".to_string();
+    assert_eq!(
+        parser.parse(&test, true, context),
+        Ok(
+            hashset![
+                (
+                    Expr::Infix(
+                        Expr::Infix(
+                            Expr::Nat(12.into()).into(),
+                            "+".to_string(),
+                            Expr::Nat(12.into()).into()
+                        ).into(),
+                        "+".to_string(),
+                        Expr::Nat(12.into()).into()
+                    ),
+                    14
+                )
+            ]
+        )
+    );
+
+}
+
+#[test]
+fn list_test() {
+    let string_parser = Rc::new(create_parser!(StringParser()));
+    let nat_parser = Rc::new(create_parser!(NatParser()));
+
+    // start off with a couple simple parsers
+    let root_parsers = RefCell::new(vec![
+        &string_parser,
+        &nat_parser
+    ].into_iter().map(Rc::downgrade).collect());
+
+    // collect them together with an ExprParser
+    let expr_parser = Rc::new(ExprParser {
+        parsers: root_parsers
+    });
+
+    let parser = ListParser {
+        expr_parser: Rc::clone(&expr_parser),
+        separator: ','
+    };
+
+    let test = "[1,2,3]".to_string();
+    assert_eq!(
+        parser.parse(&test, true, ParseMetaData::new()),
+        Ok(hashset![
+            (
+                Expr::List(vec![
+                    Nat(LONat { content: 1 }).into(),
+                    Nat(LONat { content: 2 }).into(),
+                    Nat(LONat { content: 3 }).into()]),
+                7
+            )
+        ])
+    );
+
+    let test = "[\"a\",2,\"b\",4,800808,01401740]".to_string();
+    assert_eq!(
+        parser.parse(&test, true, ParseMetaData::new()),
+        Ok(hashset![
+            (
+                Expr::List(vec![
+                    Str(LOString { content: "a".into() }),
+                    Nat(LONat { content: 2 }),
+                    Str(LOString { content: "b".into() }),
+                    Nat(LONat { content: 4 }),
+                    Nat(LONat { content: 800808 }),
+                    Nat(LONat { content: 1401740 })
+                ].into_iter().map(Box::new).collect()),
+                29)
+        ])
+    );
+}
+
+fn parse_deep_list_expressions() {
+    // combine infix and parenthetical parser for big expression parsing power!
+    let string_parser = Rc::new(create_parser!(StringParser()));
+    let nat_parser = Rc::new(create_parser!(NatParser()));
+
+    // start off with a couple simple parsers
+    let root_parsers = RefCell::new(vec![
+        &string_parser,
+        &nat_parser
+    ].into_iter().map(Rc::downgrade).collect());
+
+    // collect them together with an ExprParser
+    let parser = Rc::new(ExprParser {
+        parsers: root_parsers
+    });
+
+    // create a parenthetical parser, that uses the expr_parser to parse interior expressions
+    let parenthetical_parser = Rc::new(create_parser!(ParentheticalParser {
+        expr_parser: Rc::clone(&parser)
+    }));
+
+    // add the parenthetical parser to the list of parsers in the expression parser
+    parser.parsers.borrow_mut().push(Rc::downgrade(&parenthetical_parser));
+
+    // same with infix
+    let infix_parser = Rc::new(create_parser!(InfixParser {
+        expr_parser: Rc::clone(&parser),
+        infix: "+".to_string(),
+    }));
+    parser.parsers.borrow_mut().push(Rc::downgrade(&infix_parser));
+
+    // work in progress (add list parser here)
 }

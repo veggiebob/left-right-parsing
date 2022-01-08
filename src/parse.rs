@@ -35,7 +35,8 @@ pub struct ExprParser {
 pub struct StringParser();
 pub struct NatParser();
 pub struct ListParser {
-    pub separator: String
+    pub expr_parser: Rc<ExprParser>,
+    pub separator: char
 }
 
 /// Because of the way parsing works,
@@ -47,6 +48,10 @@ pub struct InfixParser {
     pub expr_parser: Rc<ExprParser>,
     pub infix: String,
 }
+
+/// Parse very simple things, just expressions inside parenthesis
+/// example: "(123)"
+///          "(9 + 21)"
 pub struct ParentheticalParser {
     pub expr_parser: Rc<ExprParser>
 }
@@ -294,7 +299,81 @@ impl Parser for ListParser {
     type Output = Expr;
 
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        todo!()
+        expect_str(content,
+                   "[",
+                    "ListParser: expecting '['".into(),
+                        "ListParser: expected longer string".into())
+            .and_then(|rest| {
+                // used 1
+                let meta = context.increment_depth();
+
+                // this first step seems redundant, but it's easier to compare to what the
+                // next item in the list is
+                let mut parsed = match self.expr_parser
+                    .parse(&rest, false, meta) {
+                    Ok(p) => p.into_iter().map(
+                        |(expr, used)| {
+                            (vec![expr], used)
+                        }
+                    ).collect::<HashSet<_>>(),
+                    Err(e) => return Err(e)
+                };
+                let mut finished = HashSet::new();
+                while parsed.len() > 0 {
+                    parsed = parsed.into_iter().filter_map(
+                        |(exprs, prev_used)| {
+                            if let Some((_prev_exprs, next)) = take(&rest, prev_used) {
+                                match char_at(&next, 0) {
+                                    Some(',') => {
+                                        // branch!
+                                        if let Some((_comma, next)) = take(&next, 1) {
+                                            self.expr_parser.parse(&next, false, meta)
+                                                .map(|parses| {
+                                                    parses.into_iter()
+                                                        .map(|(expr, used)| {
+                                                            // branching happens here
+                                                            let mut exprs = exprs.clone();
+                                                            exprs.extend(vec![expr]);
+                                                            (
+                                                                exprs,
+                                                                // add one for ','
+                                                                prev_used + 1 + used
+                                                            )
+                                                        }).collect::<HashSet<_>>()
+                                                })
+                                                .ok()
+                                        } else {
+                                            None // expected an expression after the comma!
+                                        }
+                                    },
+                                    Some(']') => {
+                                        if !consume || prev_used >= rest.len() - 1 {
+                                            // add one for ']'
+                                            finished.insert((exprs, prev_used + 1));
+                                        }
+                                        None
+                                    },
+                                    _ => None
+                                }
+                            } else {
+                                None // did not find an end to the list
+                            }
+                        }
+                    )
+                        .flatten()
+                        .collect::<HashSet<_>>();
+                }
+                if finished.len() > 0 {
+                    Ok(finished.into_iter().map(
+                        |(exprs, used)| {
+                            // add one to used for '['
+                            (Expr::List(exprs.into_iter().map(Box::new).collect()), used + 1)
+                        }
+                    ).collect())
+                } else {
+                    Err("ListParser: No possible parses!".into())
+                }
+            })
     }
 }
 

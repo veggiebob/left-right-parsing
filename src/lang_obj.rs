@@ -52,6 +52,14 @@ impl From<u64> for LONat {
     }
 }
 
+impl From<String> for LOString {
+    fn from(s: String) -> Self {
+        LOString {
+            content: s
+        }
+    }
+}
+
 impl From<LONat> for Expr {
     fn from(n: LONat) -> Self {
         Expr::Nat(n)
