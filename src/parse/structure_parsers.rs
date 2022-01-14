@@ -1,0 +1,47 @@
+use std::collections::HashSet;
+use crate::funcs::{take, take_while};
+use crate::lang_obj::{Expr, Identifier, ParseError};
+use crate::parse::{ParseMetaData, Parser};
+
+pub struct IdentifierParser {
+    /// a-z and A-Z are already allowed. You choose what else can be added
+    allowed_characters: HashSet<char>
+}
+
+impl IdentifierParser {
+    pub fn new(charset: &str) -> IdentifierParser {
+        IdentifierParser {
+            allowed_characters: charset.chars().into_iter().collect()
+        }
+    }
+}
+
+impl Parser for IdentifierParser {
+    type Output = Identifier;
+
+    fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        let ident = take_while(content, |c| c.is_alphabetic() || self.allowed_characters.contains(c)).0;
+        if consume && ident.len() < content.len() {
+            Err(
+                format!("<<{}>> did not consume all that it was supposed to.", ident).into()
+            )
+        } else if ident.len() == 0 {
+            Err(
+                format!("Expected to start with a-z, A-Z, or one of {:?}", self.allowed_characters).into()
+            )
+        } else {
+            Ok({
+                let mut possibilities = hashset![
+                    (Identifier::Unit(ident.clone()), ident.len())
+                ];
+                for i in 1..ident.len() {
+                    if let Some((name, _)) = take(&ident, i) {
+                        let used = name.len();
+                        possibilities.insert((Identifier::Unit(name), used));
+                    }
+                }
+                possibilities
+            })
+        }
+    }
+}

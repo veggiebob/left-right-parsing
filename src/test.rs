@@ -2,11 +2,11 @@ use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use crate::create_parser;
-use crate::parse::{ListParser, ParseMetaData, Parser};
+use crate::parse::{chain, ListParser, ParseMetaData, Parser};
 use crate::funcs::{join, substring, take, take_while};
-use crate::lang_obj::{Expr, LONat, LOString};
+use crate::lang_obj::{Expr, Identifier, LONat, LOString};
 use crate::lang_obj::Expr::{Infix, Nat, Str};
-use crate::parse::{AnyParser, ExprParser, InfixParser, NatParser, ParentheticalParser, StringParser};
+use crate::parse::{GenericExprParser, ExprParser, InfixParser, NatParser, ParentheticalParser, StringParser};
 
 #[test]
 fn misc_string_tests() {
@@ -469,4 +469,31 @@ fn parse_deep_list_expressions() {
             )
         ])
     )
+}
+
+#[test]
+fn chain_test() {
+    let test = "func_name(12)".to_string();
+    let num_parser = Rc::new(create_parser!(NatParser()));
+    let parenthetical_parser = ParentheticalParser {
+        expr_parser: Rc::new(ExprParser {
+            parsers: RefCell::new(vec![
+                Rc::downgrade(&num_parser)
+            ])
+        })
+    };
+    let parses = chain(
+        &test,
+        true,
+        ParseMetaData::new(),
+        Ok(hashset![
+            (Identifier::Unit("func_name".to_string()), 9)
+        ]),
+        |ident, content, meta| {
+            parenthetical_parser.parse(&content, true, meta.increment_depth())
+                .ok().map(|e| e.into_iter().collect())
+        },
+        |e, s| (e, s)
+    );
+    println!("{:?}", parses);
 }

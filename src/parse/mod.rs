@@ -1,13 +1,15 @@
 use std::cell::RefCell;
 use std::collections::HashSet;
+use std::hash::Hash;
 use std::process::Output;
 use std::rc::{Rc, Weak};
 use std::task::Context;
 use crate::funcs::{char_at, expect_str, take, take_while};
 use crate::lang_obj::{Expr, LONat, LOString, ParseError};
 
-pub trait Parser {
+pub mod structure_parsers;
 
+pub trait Parser {
     /// Type of object to produce during parsing
     type Output;
 
@@ -20,7 +22,58 @@ pub trait Parser {
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError>;
 }
 
-pub type AnyParser = Box<dyn Parser<Output=Expr>>;
+// finished?
+pub fn chain<T, S, F, C, R>(
+    content: &String,
+    consume: bool,
+    context: ParseMetaData,
+    result: Result<HashSet<(T, usize)>, ParseError>,
+    parse_func: F,
+    constructor: C
+) -> Result<HashSet<(R, usize)>, ParseError>
+    where F: Fn(&T, String, ParseMetaData) -> Option<Vec<(S, usize)>>,
+          S: Hash + Eq,
+          T: Hash + Clone,
+          C: Fn(T, S) -> R,
+          R: Hash + Eq
+{
+    let results: Result<HashSet<_>, ParseError> = result
+        .and_then(
+            // if it wasn't an error to begin with
+            |ps| {
+                let ps: HashSet<(R, usize)> = ps.into_iter().filter_map(
+                    |(e, used1)| {
+                        if used1 >= content.len() {
+                            None // expected more to be parsed!
+                        } else {
+                            if let Some((_, rest)) = take(content, used1) {
+                                parse_func(&e, rest, context).map(
+                                    |rs|
+                                        rs.into_iter()
+                                            .map(|(s, used2)| (s, used1 + used2))
+                                            .filter(|(s, used)| !consume || *used == content.len())
+                                            .map(|(s, used)| (constructor(e.clone(), s), used))
+                                            .collect::<Vec<(R, usize)>>()
+                                )
+                            } else {
+                                None // for some reason there were not enough characters left
+                            }
+                        }
+                    }
+                )
+                    .flatten()
+                    .collect();
+                if ps.len() > 0 {
+                    Ok(ps)
+                } else {
+                    Err("No possibilities".into())
+                }
+            }
+        );
+    results
+}
+
+pub type GenericExprParser = Box<dyn Parser<Output=Expr>>;
 
 #[macro_export]
 macro_rules! create_parser {
@@ -30,7 +83,7 @@ macro_rules! create_parser {
 }
 
 pub struct ExprParser {
-    pub parsers: RefCell<Vec<Weak<AnyParser>>>
+    pub parsers: RefCell<Vec<Weak<GenericExprParser>>>
 }
 pub struct StringParser();
 pub struct NatParser();
