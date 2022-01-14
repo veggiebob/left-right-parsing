@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use crate::create_parser;
-use crate::parse::{chain, ListParser, ParseMetaData, Parser};
+use crate::parse::{chain, chainable, ListParser, ParseMetaData, Parser};
 use crate::funcs::{join, substring, take, take_while};
 use crate::lang_obj::{Expr, Identifier, LONat, LOString};
 use crate::lang_obj::Expr::{Infix, Nat, Str};
@@ -482,6 +482,8 @@ fn chain_test() {
             ])
         })
     };
+
+    // supposing "func_name" has already been parsed, parse the rest of the string!
     let parses = chain(
         &test,
         true,
@@ -489,10 +491,12 @@ fn chain_test() {
         Ok(hashset![
             (Identifier::Unit("func_name".to_string()), 9)
         ]),
-        |ident, content, meta| {
-            parenthetical_parser.parse(&content, true, meta.increment_depth())
-                .ok().map(|e| e.into_iter().collect())
-        },
+        // using 'chainable' to chain the output of the parse into the right type
+        chainable(
+            |ident, content, meta| {
+                parenthetical_parser.parse(&content, true, meta.increment_depth())
+            }
+        ),
         |e, s| (e, s)
     );
     println!("{:?}", parses);

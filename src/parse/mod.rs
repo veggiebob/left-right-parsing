@@ -22,6 +22,19 @@ pub trait Parser {
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError>;
 }
 
+
+/// function to convert the usual parse function into the acceptable chain function
+/// The reason I didn't change the "chain" function is because I wanted it to be
+/// more generic and support more formats of parsing besides those functions
+/// that strictly implement the Parser trait
+pub fn chainable<S, F, T>(f: F) -> impl Fn(&T, String, ParseMetaData) -> Option<Vec<(S, usize)>>
+    where F: Fn(&T, String, ParseMetaData) -> Result<HashSet<(S, usize)>, ParseError>,
+{
+    move |i, content, meta| {
+        f(i, content, meta).ok().map(|e| e.into_iter().collect())
+    }
+}
+
 // finished?
 pub fn chain<T, S, F, C, R>(
     content: &String,
