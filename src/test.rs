@@ -1,12 +1,13 @@
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
-use crate::create_parser;
-use crate::parse::{chain, chainable, ListParser, ParseMetaData, Parser};
+use crate::box_parser;
+use crate::parse::{chainable, LengthQualifier, ListParser, ParseMetaData, Parser, ParseResult, TakeWhileParser};
 use crate::funcs::{join, substring, take, take_while};
 use crate::lang_obj::{Expr, Identifier, LONat, LOString};
 use crate::lang_obj::Expr::{Infix, Nat, Str};
 use crate::parse::{GenericExprParser, ExprParser, InfixParser, NatParser, ParentheticalParser, StringParser};
+use crate::parse::LengthQualifier::LEQ;
 
 #[test]
 fn misc_string_tests() {
@@ -74,8 +75,8 @@ fn parse_str_nat() {
 fn test_expr_parse() {
 
     // first make our expression parser
-    let string_parser = Rc::new(create_parser!(StringParser()));
-    let nat_parser = Rc::new(create_parser!(NatParser()));
+    let string_parser = Rc::new(box_parser!(StringParser()));
+    let nat_parser = Rc::new(box_parser!(NatParser()));
 
     let root_parsers = RefCell::new(vec![
         &string_parser,
@@ -99,8 +100,8 @@ fn test_expr_parse() {
 #[test]
 fn test_infix_parse_1() {
     // first make our expression parser
-    let string_parser = Rc::new(create_parser!(StringParser()));
-    let nat_parser = Rc::new(create_parser!(NatParser()));
+    let string_parser = Rc::new(box_parser!(StringParser()));
+    let nat_parser = Rc::new(box_parser!(NatParser()));
 
     let root_parsers = RefCell::new(vec![
         &string_parser,
@@ -194,8 +195,8 @@ fn test_infix_parse_1() {
 
 #[test]
 fn test_extended_expressions() {
-    let string_parser = Rc::new(create_parser!(StringParser()));
-    let nat_parser = Rc::new(create_parser!(NatParser()));
+    let string_parser = Rc::new(box_parser!(StringParser()));
+    let nat_parser = Rc::new(box_parser!(NatParser()));
 
     // start off with a couple simple parsers
     let root_parsers = RefCell::new(vec![
@@ -209,7 +210,7 @@ fn test_extended_expressions() {
     });
 
     // create a parenthetical parser, that uses the expr_parser to parse interior expressions
-    let parenthetical_parser = Rc::new(create_parser!(ParentheticalParser {
+    let parenthetical_parser = Rc::new(box_parser!(ParentheticalParser {
         expr_parser: Rc::clone(&expr_parser)
     }));
 
@@ -267,8 +268,8 @@ fn test_extended_expressions() {
 #[test]
 fn parse_deep_infix() {
     // combine infix and parenthetical parser for big expression parsing power!
-    let string_parser = Rc::new(create_parser!(StringParser()));
-    let nat_parser = Rc::new(create_parser!(NatParser()));
+    let string_parser = Rc::new(box_parser!(StringParser()));
+    let nat_parser = Rc::new(box_parser!(NatParser()));
 
     // start off with a couple simple parsers
     let root_parsers = RefCell::new(vec![
@@ -282,7 +283,7 @@ fn parse_deep_infix() {
     });
 
     // create a parenthetical parser, that uses the expr_parser to parse interior expressions
-    let parenthetical_parser = Rc::new(create_parser!(ParentheticalParser {
+    let parenthetical_parser = Rc::new(box_parser!(ParentheticalParser {
         expr_parser: Rc::clone(&parser)
     }));
 
@@ -290,7 +291,7 @@ fn parse_deep_infix() {
     parser.parsers.borrow_mut().push(Rc::downgrade(&parenthetical_parser));
 
     // same with infix
-    let infix_parser = Rc::new(create_parser!(InfixParser {
+    let infix_parser = Rc::new(box_parser!(InfixParser {
         expr_parser: Rc::clone(&parser),
         infix: "+".to_string(),
     }));
@@ -356,8 +357,8 @@ fn parse_deep_infix() {
 
 #[test]
 fn list_test() {
-    let string_parser = Rc::new(create_parser!(StringParser()));
-    let nat_parser = Rc::new(create_parser!(NatParser()));
+    let string_parser = Rc::new(box_parser!(StringParser()));
+    let nat_parser = Rc::new(box_parser!(NatParser()));
 
     // start off with a couple simple parsers
     let root_parsers = RefCell::new(vec![
@@ -410,8 +411,8 @@ fn list_test() {
 #[test]
 fn parse_deep_list_expressions() {
     // combine infix and parenthetical parser for big expression parsing power!
-    let string_parser = Rc::new(create_parser!(StringParser()));
-    let nat_parser = Rc::new(create_parser!(NatParser()));
+    let string_parser = Rc::new(box_parser!(StringParser()));
+    let nat_parser = Rc::new(box_parser!(NatParser()));
 
     // start off with a couple simple parsers
     let root_parsers = RefCell::new(vec![
@@ -425,7 +426,7 @@ fn parse_deep_list_expressions() {
     });
 
     // create a parenthetical parser, that uses the expr_parser to parse interior expressions
-    let parenthetical_parser = Rc::new(create_parser!(ParentheticalParser {
+    let parenthetical_parser = Rc::new(box_parser!(ParentheticalParser {
         expr_parser: Rc::clone(&parser)
     }));
 
@@ -433,14 +434,14 @@ fn parse_deep_list_expressions() {
     parser.parsers.borrow_mut().push(Rc::downgrade(&parenthetical_parser));
 
     // same with infix
-    let infix_parser = Rc::new(create_parser!(InfixParser {
+    let infix_parser = Rc::new(box_parser!(InfixParser {
         expr_parser: Rc::clone(&parser),
         infix: "+".to_string(),
     }));
     parser.parsers.borrow_mut().push(Rc::downgrade(&infix_parser));
 
     // work in progress (add list parser here)
-    let list_parser = Rc::new(create_parser!(ListParser {
+    let list_parser = Rc::new(box_parser!(ListParser {
         separator: ' ', // ooh! space separator!
         expr_parser: Rc::clone(&parser)
     }));
@@ -473,8 +474,7 @@ fn parse_deep_list_expressions() {
 
 #[test]
 fn chain_test() {
-    let test = "func_name(12)".to_string();
-    let num_parser = Rc::new(create_parser!(NatParser()));
+    let num_parser = Rc::new(box_parser!(NatParser()));
     let parenthetical_parser = ParentheticalParser {
         expr_parser: Rc::new(ExprParser {
             parsers: RefCell::new(vec![
@@ -483,14 +483,19 @@ fn chain_test() {
         })
     };
 
+    let test = "func_name(12)".to_string();
     // supposing "func_name" has already been parsed, parse the rest of the string!
-    let parses = chain(
+    let parses = ParseResult(
+        // create a fake parse result
+        Ok(hashset![
+            (Identifier::Unit("func_name".to_string()), 9)
+        ])
+    )
+        // chain it with a parenthetical parse
+        .chain(
         &test,
         true,
         ParseMetaData::new(),
-        Ok(hashset![
-            (Identifier::Unit("func_name".to_string()), 9)
-        ]),
         // using 'chainable' to chain the output of the parse into the right type
         chainable(
             |ident, content, meta| {
@@ -499,5 +504,38 @@ fn chain_test() {
         ),
         |e, s| (e, s)
     );
-    println!("{:?}", parses);
+    assert_eq!(parses, ParseResult(Ok(hashset![((Identifier::Unit("func_name".to_string()), Nat(12.into())), 13)])));
+}
+
+#[test]
+fn take_while_parser_test() {
+    let space_parser = TakeWhileParser {
+        func: Box::new(|c: &char| c.is_whitespace()),
+        amount: LengthQualifier::GEQ(0)
+    };
+
+    let test = " ,".to_string();
+    let meta = ParseMetaData::new();
+    assert_eq!(
+        space_parser.parse(&test, false, meta.clone()),
+        Ok(hashset![
+            ("".to_string(), 0),
+            (" ".to_string(), 1)
+        ])
+    );
+
+    let test = "  \ta".to_string();
+    let space_parser = TakeWhileParser {
+        func: Box::new(|c: &char| c.is_whitespace()),
+        amount: LengthQualifier::LEQ(3, true)
+    };
+    assert_eq!(
+        space_parser.parse(&test, false, meta.clone()),
+        Ok(hashset![
+            ("".to_string(), 0),
+            (" ".to_string(), 1),
+            ("  ".to_string(), 2),
+            ("  \t".to_string(), 3)
+        ])
+    );
 }

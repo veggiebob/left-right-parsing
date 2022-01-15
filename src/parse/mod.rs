@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::cmp::min;
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::process::Output;
@@ -22,6 +23,62 @@ pub trait Parser {
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError>;
 }
 
+/// Optional-use struct. Provides more implementation for the output of a parse operation.
+#[derive(Eq, PartialEq, Debug)]
+pub struct ParseResult<O: Hash + Eq>(pub Result<HashSet<(O, usize)>, ParseError>);
+
+impl<T: Hash + Eq + Clone> ParseResult<T> {
+    /// quick way to combine parses.
+    /// if you just do the types, it should be pretty straight forward
+    pub fn chain<S, F, C, R>(
+        self,
+        content: &String,
+        consume: bool,
+        context: ParseMetaData,
+        parse_func: F,
+        constructor: C
+    ) -> ParseResult<R>
+        where F: Fn(&T, String, ParseMetaData) -> Option<Vec<(S, usize)>>,
+              S: Hash + Eq,
+              C: Fn(T, S) -> R,
+              R: Hash + Eq
+    {
+        let results: Result<HashSet<_>, ParseError> = self.0
+            .and_then(
+                // if it wasn't an error to begin with
+                |ps| {
+                    let ps: HashSet<(R, usize)> = ps.into_iter().filter_map(
+                        |(e, used1)| {
+                            if used1 >= content.len() {
+                                None // expected more to be parsed!
+                            } else {
+                                if let Some((_, rest)) = take(content, used1) {
+                                    parse_func(&e, rest, context).map(
+                                        |rs|
+                                            rs.into_iter()
+                                                .map(|(s, used2)| (s, used1 + used2))
+                                                .filter(|(s, used)| !consume || *used == content.len())
+                                                .map(|(s, used)| (constructor(e.clone(), s), used))
+                                                .collect::<Vec<(R, usize)>>()
+                                    )
+                                } else {
+                                    None // for some reason there were not enough characters left
+                                }
+                            }
+                        }
+                    )
+                        .flatten()
+                        .collect();
+                    if ps.len() > 0 {
+                        Ok(ps)
+                    } else {
+                        Err("No possibilities".into())
+                    }
+                }
+            );
+        ParseResult(results)
+    }
+}
 
 /// function to convert the usual parse function into the acceptable chain function
 /// The reason I didn't change the "chain" function is because I wanted it to be
@@ -35,61 +92,10 @@ pub fn chainable<S, F, T>(f: F) -> impl Fn(&T, String, ParseMetaData) -> Option<
     }
 }
 
-// finished?
-pub fn chain<T, S, F, C, R>(
-    content: &String,
-    consume: bool,
-    context: ParseMetaData,
-    result: Result<HashSet<(T, usize)>, ParseError>,
-    parse_func: F,
-    constructor: C
-) -> Result<HashSet<(R, usize)>, ParseError>
-    where F: Fn(&T, String, ParseMetaData) -> Option<Vec<(S, usize)>>,
-          S: Hash + Eq,
-          T: Hash + Clone,
-          C: Fn(T, S) -> R,
-          R: Hash + Eq
-{
-    let results: Result<HashSet<_>, ParseError> = result
-        .and_then(
-            // if it wasn't an error to begin with
-            |ps| {
-                let ps: HashSet<(R, usize)> = ps.into_iter().filter_map(
-                    |(e, used1)| {
-                        if used1 >= content.len() {
-                            None // expected more to be parsed!
-                        } else {
-                            if let Some((_, rest)) = take(content, used1) {
-                                parse_func(&e, rest, context).map(
-                                    |rs|
-                                        rs.into_iter()
-                                            .map(|(s, used2)| (s, used1 + used2))
-                                            .filter(|(s, used)| !consume || *used == content.len())
-                                            .map(|(s, used)| (constructor(e.clone(), s), used))
-                                            .collect::<Vec<(R, usize)>>()
-                                )
-                            } else {
-                                None // for some reason there were not enough characters left
-                            }
-                        }
-                    }
-                )
-                    .flatten()
-                    .collect();
-                if ps.len() > 0 {
-                    Ok(ps)
-                } else {
-                    Err("No possibilities".into())
-                }
-            }
-        );
-    results
-}
-
 pub type GenericExprParser = Box<dyn Parser<Output=Expr>>;
 
 #[macro_export]
-macro_rules! create_parser {
+macro_rules! box_parser {
     ($parser:expr) => {
         Box::new($parser) as Box<dyn Parser<Output=Expr>>
     }
@@ -477,5 +483,124 @@ impl ParseMetaData {
         let mut meta = self;
         meta.was_infix = true;
         meta
+    }
+}
+
+
+// miscellaneous parsers (for simple things)
+
+/// describes a number of times for something.
+pub enum LengthQualifier {
+    /// Exactly that many times
+    /// (regex: /{x}/)
+    Exactly(usize),
+
+    /// Less than or equal to this amount of times
+    /// (regex: /{,x}/)
+    /// (bool is whether or not 0 is allowed)
+    LEQ(usize, bool),
+
+    /// Greater than or equal to this amount of times
+    /// (regex: /{x,}/)
+    GEQ(usize)
+}
+
+pub struct TakeWhileParser<F: Fn(&char) -> bool> {
+    pub func: Box<F>,
+    pub amount: LengthQualifier
+}
+
+impl<F: Fn(&char) -> bool> Parser for TakeWhileParser<F> {
+    type Output = String;
+
+    fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        let (max_possible, rest) = take_while(content, &self.func);
+        if consume && max_possible.len() < content.len() {
+            return Err("TakeWhileParser did not consume all the characters.".into());
+        }
+        match &self.amount {
+            &LengthQualifier::Exactly(x) => {
+                if consume && x != content.len() {
+                    Err(format!("Tried to consume but the exact amount required, {}, was not the \
+                    length of the string. (bozo)", x).into())
+                } else if max_possible.len() >= x {
+                    Ok(hashset![
+                        (take(&max_possible, x).unwrap().0, x)
+                    ])
+                } else {
+                    Err(format!("This TakeWhileParser requires exactly {} characters to be taken, \
+                    not enough were able to be taken", x).into())
+                }
+            },
+            &LengthQualifier::LEQ(x, zero) => {
+                if consume {
+                    if x < content.len() {
+                        Err(format!("Needs to consume the length \
+                        of the string. {} < {}", x, content.len()).into())
+                    } else if max_possible.len() < content.len() {
+                        Err(format!("Unable to consume whole string.").into())
+                    } else {
+                        // now we know:
+                        // x == content.len()
+                        // max_possible.len() >= content.len()
+                        Ok(hashset![
+                            (
+                                max_possible,
+                                content.len()
+                            )
+                        ])
+                    }
+                } else {
+                    if max_possible.len() == 0 && zero {
+                        Ok(hashset![("".to_string(), 0)])
+                    } else {
+                        let mut possible = hashset![];
+                        if zero {
+                            possible.insert(("".to_string(), 0));
+                        }
+                        if max_possible.len() > 0 {
+                            for n in 1..=min(x, max_possible.len()) {
+                                possible.insert(
+                                    (
+                                        take(&max_possible, n).unwrap().0,
+                                        n
+                                    )
+                                );
+                            }
+                        }
+                        Ok(possible)
+                    }
+                }
+            },
+            &LengthQualifier::GEQ(x) => {
+                if consume {
+                    if x > content.len() {
+                        Err("Can't consume more than the entire string.".into())
+                    } else if max_possible.len() < content.len() {
+                        Err("Can't consume the entire string.".into())
+                    } else {
+                        Ok(hashset![
+                            (
+                                max_possible,
+                                content.len()
+                            )
+                        ])
+                    }
+                } else {
+                    if max_possible.len() < x {
+                        Err(format!("Did not consume enough characters to meet the {} minimum requirement", x).into())
+                    } else {
+                        let mut possible = hashset![];
+                        for n in x..=max_possible.len() {
+                            possible.insert((
+                                take(&max_possible, n).unwrap().0,
+                                n
+                            ));
+                        }
+                        Ok(possible)
+                    }
+                }
+            }
+        }
     }
 }
