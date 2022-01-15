@@ -404,7 +404,7 @@ impl Parser for ListParser {
                                             if let Some((_comma, next)) = take(&next, 1) { // take off a comma
                                                 let result = whitespace_parser.parse(&next, false, meta);
                                                 let result = ParseResult(result);
-                                                let result = result.chain(
+                                                result.chain(
                                                     &next,
                                                     false,
                                                     meta,
@@ -413,36 +413,18 @@ impl Parser for ListParser {
                                                             .map(|ps|
                                                                 // add 1 for the unaccounted-for comma
                                                                 ps.into_iter()
-                                                                    .map(|(expr, used)| (expr, used + 1))
+                                                                    // add previous expression length + 1 for comma
+                                                                    .map(|(expr, used)| (expr, prev_used + 1 + used))
                                                                     .collect()
                                                             )
                                                     ),
                                                     |_spaces, expr| {
+                                                        // this is the core of branching
                                                         let mut exprs = exprs.clone(); // include all the past expressions
                                                         exprs.extend(vec![expr]); // extend this one with the next expression
                                                         exprs
                                                     }
-                                                );
-                                                result.0.map(|e| e
-                                                    .into_iter()
-                                                    .map(|(exprs, used)|
-                                                        (exprs, prev_used + used)) // add the used from previous expressions
-                                                    .collect::<HashSet<_>>()).ok()
-                                                // let result = self.expr_parser.parse(&next, false, meta)
-                                                //     .map(|parses| {
-                                                //         parses.into_iter()
-                                                //             .map(|(expr, used)| {
-                                                //                 // branching happens here
-                                                //                 let mut exprs = exprs.clone();
-                                                //                 exprs.extend(vec![expr]);
-                                                //                 (
-                                                //                     exprs,
-                                                //                     // add one for ','
-                                                //                     prev_used + 1 + used
-                                                //                 )
-                                                //             }).collect::<HashSet<_>>()
-                                                //     });
-                                                // todo!()
+                                                ).0.ok()
                                             } else {
                                                 None // expected an expression after the comma!
                                             }

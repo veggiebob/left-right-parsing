@@ -411,7 +411,7 @@ pub fn list_test_2() {
         expr_parser: Rc::clone(&expr_parser),
         separator: ','
     };
-    let test = "[\"a\",2,\"b\",4,800808,01401740]".to_string();
+    let test = "[\"a\",2,\"b\",4, 800808,01401740]".to_string();
     assert_eq!(
         parser.parse(&test, true, ParseMetaData::new()),
         Ok(hashset![
@@ -424,7 +424,7 @@ pub fn list_test_2() {
                     Nat(LONat { content: 800808 }),
                     Nat(LONat { content: 1401740 })
                 ].into_iter().map(Box::new).collect()),
-                29)
+                30)
         ])
     );
 }
