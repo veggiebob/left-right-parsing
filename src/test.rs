@@ -1,14 +1,15 @@
 use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
+
 use crate::box_parser;
-use crate::parse::{chainable, LengthQualifier, ListParser, ParseMetaData, Parser, ParseResult, TakeWhileParser};
 use crate::funcs::{join, substring, take, take_while};
 use crate::lang_obj::{Expr, Identifier, LONat, LOString};
 use crate::lang_obj::Expr::{Infix, Nat, Str};
 use crate::lang_obj::Identifier::Unit;
 use crate::lang_obj::Statement::Let;
-use crate::parse::{GenericExprParser, ExprParser, InfixParser, NatParser, ParentheticalParser, StringParser};
+use crate::parse::{chainable, LengthQualifier, ListParser, ParseMetaData, Parser, ParseResult, TakeWhileParser};
+use crate::parse::{ExprParser, GenericExprParser, InfixParser, NatParser, ParentheticalParser, StringParser};
 use crate::parse::LengthQualifier::LEQ;
 use crate::parse::structure_parsers::{IdentifierParser, LetParser};
 
@@ -604,5 +605,47 @@ fn test_let_parse() {
     assert_eq!(
         let_parser.parse(&test, true, context),
         Ok(hashset!{(Let(Unit("x".to_string()), Nat(LONat { content: 32 })), test.len())})
-    )
+    );
+
+    let test = "let x=\"hello world\"".to_string();
+    assert_eq!(
+        let_parser.parse(&test, true, context),
+        Ok(hashset!{(Let(Unit("x".to_string()), Str(LOString { content: "hello world".to_string() })), test.len())})
+    );
+}
+
+#[test]
+fn weirder_let_parse_tests() {
+
+    let string_parser = Rc::new(box_parser!(StringParser()));
+    let nat_parser = Rc::new(box_parser!(NatParser()));
+
+    let root_parsers = RefCell::new(vec![
+        &string_parser,
+        &nat_parser
+    ].into_iter().map(Rc::downgrade).collect());
+
+    let expr_parser = ExprParser {
+        parsers: root_parsers
+    };
+
+    let let_parser = LetParser {
+        id_parser: Rc::new(IdentifierParser::new(".=-2")), // new charset
+        expr_parser: Rc::new(expr_parser)
+    };
+
+    let context = ParseMetaData::new();
+
+    let test = "let .-. = 32".to_string();
+    // println!("{:?}", let_parser.parse(&test, true, context))
+    assert_eq!(
+        let_parser.parse(&test, true, context),
+        Ok(hashset!{(Let(Unit(".-.".to_string()), Nat(LONat { content: 32 })), test.len())})
+    );
+
+    let test = "let hello=2=\"hello world\"".to_string();
+    assert_eq!(
+        let_parser.parse(&test, true, context),
+        Ok(hashset!{(Let(Unit("hello=2".to_string()), Str(LOString { content: "hello world".to_string() })), test.len())})
+    );
 }

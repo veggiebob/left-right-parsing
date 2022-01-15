@@ -60,17 +60,18 @@ impl Parser for LetParser {
     type Output = Statement;
 
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        let w_parser = TakeWhileParser::whitespace(LengthQualifier::GEQ(1));
+        let one_or_more_space = TakeWhileParser::whitespace(LengthQualifier::GEQ(1));
+        let maybe_space = TakeWhileParser::whitespace(LengthQualifier::GEQ(0));
         let result = expect_with_used(content, "let", "Expected 'let'".into());
         let result = ParseResult(result) // wrap with the result to do some chaining!
             .chain( // parse some more space
                     &content,
                     false,
                     context,
-                    chainable(|ident, next, meta| {
-                        w_parser.parse(&next, false, context)
+                    chainable(|_let, next, meta| {
+                        one_or_more_space.parse(&next, false, context)
                     }),
-                    |ident, x| ident
+                    |_let, _rest| ()
             )
             .chain( // parse an identifier
                 &content,
@@ -86,7 +87,7 @@ impl Parser for LetParser {
                 false,
                 context,
                 chainable(|ident, next, meta| {
-                    w_parser.parse(&next, false, context)
+                    maybe_space.parse(&next, false, context)
                 }),
                 |ident, x| ident
             )
@@ -107,7 +108,7 @@ impl Parser for LetParser {
                 false,
                 context,
                 chainable(|ident, next, meta| {
-                    w_parser.parse(&next, false, context)
+                    maybe_space.parse(&next, false, context)
                 }),
                 |ident, x| ident
             )
@@ -116,7 +117,7 @@ impl Parser for LetParser {
                 false,
                 context,
                 chainable(|_ident, next, meta| {
-                    self.expr_parser.parse(&next, false, meta)
+                    self.expr_parser.parse(&next, consume, meta)
                 }),
                 |ident, expr| Statement::Let(ident, expr)
             );
