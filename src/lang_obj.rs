@@ -16,10 +16,35 @@ pub struct LONat {
 
 #[derive(Eq, PartialEq, Debug, Hash, Clone)]
 pub enum Expr {
+
+    /// Represents a whole, non-negative integer.
+    /// regex: \d+
     Nat(LONat),
+
+    /// Represents a string. Currently does not support escaped strings inside such as `"\""`
     Str(LOString),
+
+    /// An operator between 2 expressions.
+    /// pseudo-regex syntax: <expr>\s*<op>\s*<expr>
+    /// Note that all operators are right-associative
     Infix(Box<Expr>, String, Box<Expr>),
-    List(Vec<Box<Expr>>)
+
+    /// A list of expressions.
+    /// pseudo-regex syntax: \[(<expr><sep>\s*)*<expr>\]
+    /// where the separator can be any `char`
+    List(Vec<Box<Expr>>),
+
+    /// Represents a function call. The first being the operator, the second being
+    /// the operand. There is no separator between the expressions.
+    /// Just because it may parse successfully does not mean it's an actual function.
+    /// For example, "3(2)" could parse as a valid "function expression" but since
+    /// the types won't be known until after parsing has been analyzed, it's impossible
+    /// to know if "3" is a function.
+    /// Ideally, this will be used for expressions that look like "func_name[arg1, arg2]"
+    // this should be implemented in the future, but for now I'll just use an infix
+    // operator to symbolize function calls. It's easier that way.
+    // Something like "func_name $ [arg1, arg2]"
+    Func(Identifier, Box<Expr>)
 }
 
 #[derive(Eq, PartialEq, Debug)]
@@ -76,6 +101,7 @@ pub struct Program {
     content: Vec<Statement>
 }
 
+#[derive(Eq, PartialEq, Hash, Debug)]
 pub enum Statement {
 
     /// let expression

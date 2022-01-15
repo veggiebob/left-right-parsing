@@ -1,4 +1,6 @@
+use std::collections::HashSet;
 use std::ops::Add;
+use crate::lang_obj::ParseError;
 
 pub fn join<T: IntoIterator<Item=char>>(chars: T) -> String {
     chars.into_iter().fold(String::new(), |s, i| s.add(&*i.to_string()))
@@ -59,5 +61,17 @@ pub fn expect_str<E>(test: &String, phrase: &str, incorrect: E, too_short: E) ->
         }
     } else {
         Err(too_short)
+    }
+}
+
+pub fn expect_with_used(test: &String, phrase: &str, incorrect: ParseError) -> Result<HashSet<((), usize)>, ParseError> {
+    if let Some((s, _rest)) = take(test, phrase.len()) {
+        if s == phrase.to_string() {
+            Ok(hashset![((), phrase.len())])
+        } else {
+            Err(incorrect)
+        }
+    } else {
+        Err("Expected more characters".into())
     }
 }

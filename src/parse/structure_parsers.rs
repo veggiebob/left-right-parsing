@@ -1,11 +1,21 @@
 use std::collections::HashSet;
-use crate::funcs::{take, take_while};
-use crate::lang_obj::{Expr, Identifier, ParseError};
-use crate::parse::{ParseMetaData, Parser};
+use std::rc::Rc;
+use crate::funcs::{expect_str, expect_with_used, take, take_while};
+use crate::lang_obj::{Expr, Identifier, ParseError, Statement};
+use crate::parse::{chainable, ExprParser, LengthQualifier, ParseMetaData, Parser, ParseResult, TakeWhileParser};
 
 pub struct IdentifierParser {
     /// a-z and A-Z are already allowed. You choose what else can be added
     allowed_characters: HashSet<char>
+}
+
+pub struct LetParser {
+    pub id_parser: Rc<IdentifierParser>,
+    pub expr_parser: Rc<ExprParser>
+}
+
+pub struct FnDefParser {
+    // todo
 }
 
 impl IdentifierParser {
@@ -43,5 +53,73 @@ impl Parser for IdentifierParser {
                 possibilities
             })
         }
+    }
+}
+
+impl Parser for LetParser {
+    type Output = Statement;
+
+    fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        let w_parser = TakeWhileParser::whitespace(LengthQualifier::GEQ(1));
+        let result = expect_with_used(content, "let", "Expected 'let'".into());
+        let result = ParseResult(result) // wrap with the result to do some chaining!
+            .chain( // parse some more space
+                    &content,
+                    false,
+                    context,
+                    chainable(|ident, next, meta| {
+                        w_parser.parse(&next, false, context)
+                    }),
+                    |ident, x| ident
+            )
+            .chain( // parse an identifier
+                &content,
+                false,
+                context.increment_depth(),
+                chainable(|_space, next, meta| {
+                    self.id_parser.parse(&next, false, context)
+                }),
+                |_space, ident| ident
+            )
+            .chain( // parse some more space
+                &content,
+                false,
+                context,
+                chainable(|ident, next, meta| {
+                    w_parser.parse(&next, false, context)
+                }),
+                |ident, x| ident
+            )
+            .chain( // parse an '='
+                &content,
+                false,
+                context,
+                |_ident, next, meta| {
+                    expect_str::<ParseError>(&next, "=",
+                                             "Expected an '='".into(),
+                    "Expected more characters, specifically an '='".into())
+                        .map(|_| vec![((), 1)]).ok()
+                },
+                |ident, _eq| ident
+            )
+            .chain( // parse some more space
+                &content,
+                false,
+                context,
+                chainable(|ident, next, meta| {
+                    w_parser.parse(&next, false, context)
+                }),
+                |ident, x| ident
+            )
+            .chain( // parse the expression! (finally!)
+                &content,
+                false,
+                context,
+                chainable(|_ident, next, meta| {
+                    self.expr_parser.parse(&next, false, meta)
+                }),
+                |ident, expr| Statement::Let(ident, expr)
+            );
+        result.0 // unwrap from ParseResult
     }
 }

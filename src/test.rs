@@ -6,8 +6,11 @@ use crate::parse::{chainable, LengthQualifier, ListParser, ParseMetaData, Parser
 use crate::funcs::{join, substring, take, take_while};
 use crate::lang_obj::{Expr, Identifier, LONat, LOString};
 use crate::lang_obj::Expr::{Infix, Nat, Str};
+use crate::lang_obj::Identifier::Unit;
+use crate::lang_obj::Statement::Let;
 use crate::parse::{GenericExprParser, ExprParser, InfixParser, NatParser, ParentheticalParser, StringParser};
 use crate::parse::LengthQualifier::LEQ;
+use crate::parse::structure_parsers::{IdentifierParser, LetParser};
 
 #[test]
 fn misc_string_tests() {
@@ -72,7 +75,7 @@ fn parse_str_nat() {
 }
 
 #[test]
-fn test_expr_parse() {
+fn test_0_depth_parser() {
 
     // first make our expression parser
     let string_parser = Rc::new(box_parser!(StringParser()));
@@ -389,6 +392,19 @@ fn list_test_1() {
             )
         ])
     );
+
+    // test single element in list
+    let test = "[1]".to_string();
+    assert_eq!(
+        parser.parse(&test, true, ParseMetaData::new()),
+        Ok(hashset![
+            (
+                Expr::List(vec![
+                    Nat(LONat { content: 1 }).into()]),
+                3
+            )
+        ])
+    );
 }
 
 #[test]
@@ -559,4 +575,34 @@ fn take_while_parser_test() {
             ("  \t".to_string(), 3)
         ])
     );
+}
+
+#[test]
+fn test_let_parse() {
+
+    let string_parser = Rc::new(box_parser!(StringParser()));
+    let nat_parser = Rc::new(box_parser!(NatParser()));
+
+    let root_parsers = RefCell::new(vec![
+        &string_parser,
+        &nat_parser
+    ].into_iter().map(Rc::downgrade).collect());
+
+    let expr_parser = ExprParser {
+        parsers: root_parsers
+    };
+
+    let let_parser = LetParser {
+        id_parser: Rc::new(IdentifierParser::new("")),
+        expr_parser: Rc::new(expr_parser)
+    };
+
+    let context = ParseMetaData::new();
+
+    let test = "let x = 32".to_string();
+    // println!("{:?}", let_parser.parse(&test, true, context))
+    assert_eq!(
+        let_parser.parse(&test, true, context),
+        Ok(hashset!{(Let(Unit("x".to_string()), Nat(LONat { content: 32 })), test.len())})
+    )
 }
