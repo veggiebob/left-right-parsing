@@ -356,7 +356,7 @@ fn parse_deep_infix() {
 }
 
 #[test]
-fn list_test() {
+fn list_test_1() {
     let string_parser = Rc::new(box_parser!(StringParser()));
     let nat_parser = Rc::new(box_parser!(NatParser()));
 
@@ -376,7 +376,7 @@ fn list_test() {
         separator: ','
     };
 
-    let test = "[1,2,3]".to_string();
+    let test = "[1,2, 3]".to_string();
     assert_eq!(
         parser.parse(&test, true, ParseMetaData::new()),
         Ok(hashset![
@@ -385,11 +385,32 @@ fn list_test() {
                     Nat(LONat { content: 1 }).into(),
                     Nat(LONat { content: 2 }).into(),
                     Nat(LONat { content: 3 }).into()]),
-                7
+                8
             )
         ])
     );
+}
 
+#[test]
+pub fn list_test_2() {
+    let string_parser = Rc::new(box_parser!(StringParser()));
+    let nat_parser = Rc::new(box_parser!(NatParser()));
+
+    // start off with a couple simple parsers
+    let root_parsers = RefCell::new(vec![
+        &string_parser,
+        &nat_parser
+    ].into_iter().map(Rc::downgrade).collect());
+
+    // collect them together with an ExprParser
+    let expr_parser = Rc::new(ExprParser {
+        parsers: root_parsers
+    });
+
+    let parser = ListParser {
+        expr_parser: Rc::clone(&expr_parser),
+        separator: ','
+    };
     let test = "[\"a\",2,\"b\",4,800808,01401740]".to_string();
     assert_eq!(
         parser.parse(&test, true, ParseMetaData::new()),
@@ -448,7 +469,7 @@ fn parse_deep_list_expressions() {
     parser.parsers.borrow_mut().push(Rc::downgrade(&list_parser));
 
     // ready to test!
-    let test = "[1 + 2 3 \"hello\" + 1]".to_string();
+    let test = "[1 + 2 3 \n\"hello\" + 1]".to_string();
     assert_eq!(
         parser.parse(&test, true, ParseMetaData::new()),
         Ok(hashset![
@@ -466,7 +487,7 @@ fn parse_deep_list_expressions() {
                         Nat(LONat { content: 1 }).into()
                     ).into()
                 ]),
-                21
+                22
             )
         ])
     )

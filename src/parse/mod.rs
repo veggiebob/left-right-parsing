@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::cmp::min;
 use std::collections::HashSet;
 use std::hash::Hash;
+use std::iter::TakeWhile;
 use std::process::Output;
 use std::rc::{Rc, Weak};
 use std::task::Context;
@@ -371,6 +372,7 @@ impl Parser for ListParser {
     type Output = Expr;
 
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        let whitespace_parser = TakeWhileParser::whitespace(LengthQualifier::GEQ(0)); // consume any amount of whitespace!
         expect_str(content,
                    "[",
                     "ListParser: expecting '['".into(),
@@ -399,22 +401,48 @@ impl Parser for ListParser {
                                     Some(c) => {
                                         if c == self.separator {
                                             // branch!
-                                            if let Some((_comma, next)) = take(&next, 1) {
-                                                self.expr_parser.parse(&next, false, meta)
-                                                    .map(|parses| {
-                                                        parses.into_iter()
-                                                            .map(|(expr, used)| {
-                                                                // branching happens here
-                                                                let mut exprs = exprs.clone();
-                                                                exprs.extend(vec![expr]);
-                                                                (
-                                                                    exprs,
-                                                                    // add one for ','
-                                                                    prev_used + 1 + used
-                                                                )
-                                                            }).collect::<HashSet<_>>()
-                                                    })
-                                                    .ok()
+                                            if let Some((_comma, next)) = take(&next, 1) { // take off a comma
+                                                let result = whitespace_parser.parse(&next, false, meta);
+                                                let result = ParseResult(result);
+                                                let result = result.chain(
+                                                    &next,
+                                                    false,
+                                                    meta,
+                                                    chainable(|_spaces, next, meta|
+                                                        self.expr_parser.parse(&next, false, meta)
+                                                            .map(|ps|
+                                                                // add 1 for the unaccounted-for comma
+                                                                ps.into_iter()
+                                                                    .map(|(expr, used)| (expr, used + 1))
+                                                                    .collect()
+                                                            )
+                                                    ),
+                                                    |_spaces, expr| {
+                                                        let mut exprs = exprs.clone(); // include all the past expressions
+                                                        exprs.extend(vec![expr]); // extend this one with the next expression
+                                                        exprs
+                                                    }
+                                                );
+                                                result.0.map(|e| e
+                                                    .into_iter()
+                                                    .map(|(exprs, used)|
+                                                        (exprs, prev_used + used)) // add the used from previous expressions
+                                                    .collect::<HashSet<_>>()).ok()
+                                                // let result = self.expr_parser.parse(&next, false, meta)
+                                                //     .map(|parses| {
+                                                //         parses.into_iter()
+                                                //             .map(|(expr, used)| {
+                                                //                 // branching happens here
+                                                //                 let mut exprs = exprs.clone();
+                                                //                 exprs.extend(vec![expr]);
+                                                //                 (
+                                                //                     exprs,
+                                                //                     // add one for ','
+                                                //                     prev_used + 1 + used
+                                                //                 )
+                                                //             }).collect::<HashSet<_>>()
+                                                //     });
+                                                // todo!()
                                             } else {
                                                 None // expected an expression after the comma!
                                             }
@@ -505,12 +533,21 @@ pub enum LengthQualifier {
     GEQ(usize)
 }
 
-pub struct TakeWhileParser<F: Fn(&char) -> bool> {
-    pub func: Box<F>,
+pub struct TakeWhileParser {
+    pub func: Box<dyn Fn(&char) -> bool>,
     pub amount: LengthQualifier
 }
 
-impl<F: Fn(&char) -> bool> Parser for TakeWhileParser<F> {
+impl TakeWhileParser {
+    pub fn whitespace(amount: LengthQualifier) -> TakeWhileParser {
+        TakeWhileParser {
+            func: Box::new(|c: &char| c.is_whitespace()),
+            amount
+        }
+    }
+}
+
+impl Parser for TakeWhileParser {
     type Output = String;
 
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
