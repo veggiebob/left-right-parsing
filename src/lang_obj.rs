@@ -44,10 +44,12 @@ pub enum Expr {
     // this should be implemented in the future, but for now I'll just use an infix
     // operator to symbolize function calls. It's easier that way.
     // Something like "func_name $ [arg1, arg2]"
-    Func(Identifier, Box<Expr>)
+    Func(Identifier, Box<Expr>),
+
+    Variable(Identifier)
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct ParseError {
     pub location: Option<usize>,
     pub range: Option<(usize, usize)>,
@@ -109,7 +111,7 @@ pub enum Statement {
     Let(Identifier, Expr),
 
     /// function definition
-    // (name, arguments, value, where-clause)
+    // (name, arguments, body, where-clause)
     FnDef(String, Vec<(Identifier, Type)>, Expr, WhereClause),
 
 }

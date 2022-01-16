@@ -28,6 +28,12 @@ pub trait Parser {
 #[derive(Eq, PartialEq, Debug)]
 pub struct ParseResult<O: Hash + Eq>(pub Result<HashSet<(O, usize)>, ParseError>);
 
+impl<O: Hash + Eq + Clone> Clone for ParseResult<O> {
+    fn clone(&self) -> Self {
+        ParseResult(self.0.clone())
+    }
+}
+
 impl<T: Hash + Eq + Clone> ParseResult<T> {
     /// quick way to combine parses.
     /// if you just do the types, it should be pretty straight forward
@@ -78,6 +84,77 @@ impl<T: Hash + Eq + Clone> ParseResult<T> {
                 }
             );
         ParseResult(results)
+    }
+
+    pub fn parse_any_whitespace(self, content: &String, consume: bool, context: ParseMetaData) -> ParseResult<T> {
+        let any_whitespace = TakeWhileParser::whitespace(LengthQualifier::GEQ(0));
+        self.chain( // parse any amount of space (including 0)
+            content,
+            consume,
+            context,
+            chainable(|_x, next, meta| {
+                any_whitespace.parse(&next, consume, context)
+            }),
+            |x, _| x
+        )
+    }
+
+    pub fn parse_some_whitespace(self, content: &String, consume: bool, context: ParseMetaData) -> ParseResult<T> {
+        let some_whitespace = TakeWhileParser::whitespace(LengthQualifier::GEQ(1));
+        self.chain( // parse any amount of space (including 0)
+            content,
+            consume,
+            context,
+            chainable(|_x, next, meta| {
+                some_whitespace.parse(&next, consume, context)
+            }),
+            |x, _| x
+        )
+    }
+
+    pub fn parse_static_text(self, content: &String, consume: bool, context: ParseMetaData, phrase: &str) -> ParseResult<T> {
+        self.chain(
+            content,
+            consume,
+            context,
+            |_x, next, _meta| {
+                expect_str::<ParseError>(&next, phrase,
+                    format!("Expected a \"{}\"", phrase).into(),
+                    format!("Expected more characters, specifically \"{}\"", phrase).into())
+                    .map(|_| vec![((), phrase.len())]).ok()
+            },
+            |x, _| x
+        )
+    }
+
+    /// by being able to clone both, you can add them together
+    pub fn merge(&self, other: &ParseResult<T>) -> ParseResult<T> {
+        match &self.0 {
+            Ok(stuff) => {
+                let mut s = stuff.clone();
+                match &other.0 {
+                    Ok(stuff2) => {
+                        for e in stuff2.clone() {
+                            s.insert(e);
+                        }
+                    },
+                    Err(e) => {}
+                }
+                ParseResult(Ok(s))
+            },
+            Err(err) => {
+                match &other.0 {
+                    Ok(stuff) => ParseResult(Ok(stuff.clone())),
+                    Err(err2) => ParseResult(Err(
+                        ParseError {
+                            location: None,
+                            range: None,
+                            message: format!("{}\n{}", err.message, err2.message)
+                        }
+                    ))
+                }
+            }
+        }
     }
 }
 

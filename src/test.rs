@@ -7,11 +7,11 @@ use crate::funcs::{join, substring, take, take_while};
 use crate::lang_obj::{Expr, Identifier, LONat, LOString};
 use crate::lang_obj::Expr::{Infix, Nat, Str};
 use crate::lang_obj::Identifier::Unit;
-use crate::lang_obj::Statement::Let;
+use crate::lang_obj::Statement::{FnDef, Let};
 use crate::parse::{chainable, LengthQualifier, ListParser, ParseMetaData, Parser, ParseResult, TakeWhileParser};
 use crate::parse::{ExprParser, GenericExprParser, InfixParser, NatParser, ParentheticalParser, StringParser};
 use crate::parse::LengthQualifier::LEQ;
-use crate::parse::structure_parsers::{IdentifierParser, LetParser};
+use crate::parse::structure_parsers::{FnDefParser, IdentifierParser, LetParser, StatementParser, TypeParser, VariableParser};
 
 #[test]
 fn misc_string_tests() {
@@ -648,4 +648,61 @@ fn weirder_let_parse_tests() {
         let_parser.parse(&test, true, context),
         Ok(hashset!{(Let(Unit("hello=2".to_string()), Str(LOString { content: "hello world".to_string() })), test.len())})
     );
+}
+
+#[test]
+fn fn_def_parse_test() {
+
+
+    // create a basic expression parser
+    let string_parser = Rc::new(box_parser!(StringParser()));
+    let nat_parser = Rc::new(box_parser!(NatParser()));
+
+    let root_parsers = RefCell::new(vec![
+        &string_parser,
+        &nat_parser
+    ].into_iter().map(Rc::downgrade).collect());
+
+    let expr_parser = Rc::new(ExprParser {
+        parsers: root_parsers
+    });
+
+    // create arg parser to parse things like [var_name : var_type, var_name2 : var_type2]
+    let arg_name_parser = Rc::new(box_parser!(VariableParser(IdentifierParser::new("_"))));
+    let arg_type_parser = Rc::new(box_parser!(VariableParser(IdentifierParser::new("_"))));
+    let arg_name_type_parser = Rc::new(ExprParser {
+        parsers: RefCell::new(vec![
+            Rc::downgrade(&arg_name_parser),
+            Rc::downgrade(&arg_type_parser)
+        ])
+    });
+    let arg_infix = Rc::new(box_parser!(InfixParser {
+        expr_parser: Rc::clone(&arg_name_type_parser),
+        infix: ":".to_string()
+    }));
+    let arg_parser = Rc::new(ExprParser {
+        parsers: RefCell::new(vec![
+            Rc::downgrade(&arg_infix)
+        ])
+    });
+    let arg_parser = Rc::new(ListParser {
+        expr_parser: arg_parser,
+        separator: ','
+    });
+
+    let fn_parser = FnDefParser {
+        id_parser: Rc::new(IdentifierParser::new("_")),
+        statement_parser: Rc::new(StatementParser {
+            parsers: RefCell::new(vec![])
+        }),
+        type_parser: Rc::new(TypeParser(IdentifierParser::new(""))),
+        expr_parser: Rc::clone(&expr_parser),
+        arg_parser
+    };
+
+    let context = ParseMetaData::new();
+    let test = "fn_name[var_a: nice, var_b: nicee] => \"hello world\"".to_string();
+    println!("test length: {}", test.len());
+    println!("{:?}", fn_parser.parse(&test, true, context));
+
 }
