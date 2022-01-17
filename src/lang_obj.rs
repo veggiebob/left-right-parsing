@@ -46,6 +46,7 @@ pub enum Expr {
     // Something like "func_name $ [arg1, arg2]"
     Func(Identifier, Box<Expr>),
 
+    /// Any other symbol that would be used to identify a local variable
     Variable(Identifier)
 }
 

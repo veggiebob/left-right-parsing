@@ -98,9 +98,7 @@ impl Parser for VariableParser {
     type Output = Expr;
 
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        self.0.parse(content, consume, context)
-            .map(|hs| hs.into_iter()
-                .map(|(ident, used)| (Expr::Variable(ident), used)).collect())
+        ParseResult(self.0.parse(content, consume, context)).map_inner(Expr::Variable).0
     }
 }
 
