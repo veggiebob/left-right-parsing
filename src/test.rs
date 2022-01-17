@@ -5,11 +5,11 @@ use std::rc::{Rc, Weak};
 use crate::{box_expr_parser, box_stmt_parser};
 use crate::funcs::{join, substring, take, take_while};
 use crate::lang_obj::{Expr, Identifier, LONat, LOString};
-use crate::lang_obj::Expr::{Infix, List, Nat, Str, Variable};
+use crate::lang_obj::Expr::{Conditional, Infix, List, Nat, Str, Variable};
 use crate::lang_obj::Identifier::Unit;
 use crate::lang_obj::Statement;
 use crate::lang_obj::Statement::{FnDef, Let};
-use crate::parse::{chainable, LengthQualifier, ListParser, ParseMetaData, Parser, ParseResult, TakeWhileParser};
+use crate::parse::{chainable, ConditionalParser, LengthQualifier, ListParser, ParseMetaData, Parser, ParseResult, TakeWhileParser};
 use crate::parse::{ExprParser, GenericExprParser, InfixParser, NatParser, ParentheticalParser, StringParser};
 use crate::parse::LengthQualifier::LEQ;
 use crate::parse::structure_parsers::{FnDefParser, IdentifierParser, LetParser, StatementParser, TypeParser, VariableParser};
@@ -588,7 +588,6 @@ fn parse_deep_list_expressions() {
     }));
     parser.parsers.borrow_mut().push(Rc::downgrade(&infix_parser));
 
-    // work in progress (add list parser here)
     let list_parser = Rc::new(box_expr_parser!(ListParser {
         separator: ' ', // ooh! space separator!
         expr_parser: Rc::clone(&parser)
@@ -701,6 +700,146 @@ fn take_while_parser_test() {
 }
 
 #[test]
+fn conditional_if_else_test() {
+    // fairly ominous parser
+
+    let string_parser = Rc::new(box_expr_parser!(StringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+
+    // start off with a couple simple parsers
+    let root_parsers = RefCell::new(vec![
+        &string_parser,
+        &nat_parser
+    ].into_iter().map(Rc::downgrade).collect());
+
+    // collect them together with an ExprParser
+    let parser = Rc::new(ExprParser {
+        parsers: root_parsers
+    });
+
+    // create a parenthetical parser, that uses the expr_parser to parse interior expressions
+    let parenthetical_parser = Rc::new(box_expr_parser!(ParentheticalParser {
+        expr_parser: Rc::clone(&parser)
+    }));
+
+    // add the parenthetical parser to the list of parsers in the expression parser
+    parser.parsers.borrow_mut().push(Rc::downgrade(&parenthetical_parser));
+
+    // same with infix
+    let infix_parser = Rc::new(box_expr_parser!(InfixParser {
+        expr_parser: Rc::clone(&parser),
+        infix: "+".to_string(),
+    }));
+    parser.parsers.borrow_mut().push(Rc::downgrade(&infix_parser));
+
+    let list_parser = Rc::new(box_expr_parser!(ListParser {
+        separator: ',', // ooh! space separator!
+        expr_parser: Rc::clone(&parser)
+    }));
+    parser.parsers.borrow_mut().push(Rc::downgrade(&list_parser));
+
+    let condition_parser = Rc::new(box_expr_parser!(ConditionalParser {
+        expr_parser: Rc::clone(&parser)
+    }));
+    parser.parsers.borrow_mut().push(Rc::downgrade(&condition_parser));
+
+    // test time!
+    let ctx = ParseMetaData::new();
+
+    let test = "if 13 14 else 15".to_string();
+    // println!("length of test: {}", test.len());
+    // println!("{:#?}", parser.parse(&test, true, ctx));
+    assert_eq!(
+        parser.parse(&test, true, ctx),
+        Ok(
+            hashset!{
+                (
+                    Expr::Conditional(
+                        Nat(
+                            LONat {
+                                content: 13,
+                            },
+                        ).into(),
+                        Nat(
+                            LONat {
+                                content: 14,
+                            },
+                        ).into(),
+                        Nat(
+                            LONat {
+                                content: 15,
+                            },
+                        ).into(),
+                    ),
+                    test.len()
+                ),
+            },
+        )
+    );
+
+    let test = "if [13, 11] 14 else 15".to_string();
+    // println!("length of test: {}", test.len());
+    // println!("{:#?}", parser.parse(&test, true, ctx));
+    assert_eq!(
+        parser.parse(&test, true, ctx),
+        Ok(
+            hashset!{
+                (
+                    Expr::Conditional(
+                        List(vec![
+                            Nat(LONat { content: 13 }).into(),
+                            Nat(LONat { content: 11 }).into()
+                        ]).into(),
+                        Nat(
+                            LONat {
+                                content: 14,
+                            },
+                        ).into(),
+                        Nat(
+                            LONat {
+                                content: 15,
+                            },
+                        ).into(),
+                    ),
+                    test.len()
+                ),
+            },
+        )
+    );
+
+    // elseif!
+    let test = "if [13, 11] 14 elseif \"true\" \"true\" else \"false\"".to_string();
+    // println!("length of test: {}", test.len());
+    // println!("{:#?}", parser.parse(&test, true, ctx));
+    assert_eq!(
+        parser.parse(&test, true, ctx),
+        Ok(
+            hashset!{
+                (
+                    Expr::Conditional(
+                        List(vec![
+                            Nat(LONat { content: 13 }).into(),
+                            Nat(LONat { content: 11 }).into()
+                        ]).into(),
+                        Nat(
+                            LONat {
+                                content: 14,
+                            },
+                        ).into(),
+                        Expr::Conditional(
+                            Str(LOString { content: "true".to_string() }).into(),
+                            Str(LOString { content: "true".to_string() }).into(),
+                            Str(LOString { content: "false".to_string() }).into()
+                        ).into()
+                    ),
+                    test.len()
+                ),
+            },
+        )
+    );
+}
+
+#[test]
 fn test_let_parse() {
 
     let string_parser = Rc::new(box_expr_parser!(StringParser()));
@@ -788,8 +927,8 @@ fn fn_def_parse_test() {
     });
 
     // create arg parser to parse things like [var_name : var_type, var_name2 : var_type2]
-    let arg_name_parser = Rc::new(box_expr_parser!(VariableParser(IdentifierParser::new("_"))));
-    let arg_type_parser = Rc::new(box_expr_parser!(VariableParser(IdentifierParser::new("_"))));
+    let arg_name_parser = Rc::new(box_expr_parser!(VariableParser::default(IdentifierParser::new("_"))));
+    let arg_type_parser = Rc::new(box_expr_parser!(VariableParser::default(IdentifierParser::new("_"))));
     let arg_name_type_parser = Rc::new(ExprParser {
         parsers: RefCell::new(vec![
             Rc::downgrade(&arg_name_parser),
@@ -964,6 +1103,7 @@ fn omega_gigachad_function_test() {
     const INFIX_MULTIPLICATION_SYMBOL: &str = "*"; // for expressions like "*" in "3 * 4"
     const INFIX_SUBTRACTION_SYMBOL: &str = "-"; // for expressions like "-" in "4 - 3"
     const INFIX_FUNCTION_SYMBOL: &str = " "; // for expressions like "$" in "func $ [arg]"
+    const INFIX_EQUALITY_SYMBOL: &str = "="; // for checking equality; for expressions like "=" in "x = y"
     const LIST_SEPARATOR_SYMBOL: char = ','; // for list expressions, like ',' in "[1, 2, 3]"
     const IDENTIFIER_ALLOWED_CHARS: &str = "_"; // also, by default, includes a-zA-Z
     const FUNCTION_ARGUMENT_SEPARATOR: char = ','; // seems simple
@@ -976,7 +1116,7 @@ fn omega_gigachad_function_test() {
     // primitive parsers
     let string_parser = Rc::new(box_expr_parser!(StringParser()));
     let nat_parser = Rc::new(box_expr_parser!(NatParser()));
-    let var_parser = Rc::new(box_expr_parser!(VariableParser(IdentifierParser::new(IDENTIFIER_ALLOWED_CHARS))));
+    let var_parser = Rc::new(box_expr_parser!(VariableParser::default(IdentifierParser::new(IDENTIFIER_ALLOWED_CHARS))));
 
     // start off with a couple simple parsers
     let root_parsers = RefCell::new(vec![
@@ -1014,14 +1154,26 @@ fn omega_gigachad_function_test() {
         expr_parser: Rc::clone(&expr_parser),
         infix: String::from(INFIX_SUBTRACTION_SYMBOL)
     }));
+    let infix_equality = Rc::new(box_expr_parser!(InfixParser {
+        expr_parser: Rc::clone(&expr_parser),
+        infix: String::from(INFIX_EQUALITY_SYMBOL)
+    }));
+    let condition_parser = Rc::new(box_expr_parser!(ConditionalParser {
+        expr_parser: Rc::clone(&expr_parser)
+    }));
     // add the recursive parsers
     expr_parser.parsers.borrow_mut().extend(vec![
+        // single-instance
         &parenthetical_parser,
+        &condition_parser,
+
+        // configured
         &infix_addition,
-        &list_parser,
         &infix_multiplication,
         &infix_subtraction,
-        &infix_invocation
+        &infix_invocation,
+        &infix_equality,
+        &list_parser,
     ].into_iter().map(Rc::downgrade).collect::<Vec<_>>());
 
     /////////////////////////////////////////////////////
@@ -1029,8 +1181,8 @@ fn omega_gigachad_function_test() {
     /////////////////////////////////////////////////////
 
     // create the shallow arg parser for function signatures
-    let arg_name_parser = Rc::new(box_expr_parser!(VariableParser(IdentifierParser::new(IDENTIFIER_ALLOWED_CHARS))));
-    let arg_type_parser = Rc::new(box_expr_parser!(VariableParser(IdentifierParser::new(IDENTIFIER_ALLOWED_CHARS))));
+    let arg_name_parser = Rc::new(box_expr_parser!(VariableParser::default(IdentifierParser::new(IDENTIFIER_ALLOWED_CHARS))));
+    let arg_type_parser = Rc::new(box_expr_parser!(VariableParser::default(IdentifierParser::new(IDENTIFIER_ALLOWED_CHARS))));
     let arg_name_type_parser = Rc::new(ExprParser {
         parsers: RefCell::new(vec![
             Rc::downgrade(&arg_name_parser),
@@ -1087,6 +1239,7 @@ fn omega_gigachad_function_test() {
 
     // multiply_by_two [x: double] => x + x
 
+    // bad fibo
     let test = String::from("fibonacci [x: nat] => go x
         where {
             go [y: nat] => y * (go [y-1])
@@ -1178,5 +1331,119 @@ fn omega_gigachad_function_test() {
                 )
             },
         )
-    )
+    );
+
+
+    // actual fibo!
+    let test = String::from("fibonacci [x: nat] => if x=0 1 else go x
+        where {
+            go [y: nat] => y * (go [y-1])
+        }");
+
+    // vanity test
+    println!("length: {}", test.len());
+    println!("{:#?}", parser.parse(&test, true, context));
+
+
+    assert_eq!(
+        parser.parse(&test, true, context),
+        Ok(
+            hashset!{
+                (
+                    FnDef(
+                        "fibonacci".into(),
+                        vec![
+                            (
+                                Unit(
+                                    "x".into(),
+                                ),
+                                "nat".into(),
+                            ),
+                        ],
+                        Conditional(
+                            Infix(
+                                Variable(
+                                    Unit(
+                                        "x".into(),
+                                    ),
+                                ).into(),
+                                "=".into(),
+                                Nat(
+                                    LONat {
+                                        content: 0,
+                                    },
+                                ).into(),
+                            ).into(),
+                            Nat(
+                                LONat {
+                                    content: 1,
+                                },
+                            ).into(),
+                            Infix(
+                                Variable(
+                                    Unit(
+                                        "go".into(),
+                                    ),
+                                ).into(),
+                                " ".into(),
+                                Variable(
+                                    Unit(
+                                        "x".into(),
+                                    ),
+                                ).into(),
+                            ).into(),
+                        ),
+                        vec![
+                            FnDef(
+                                "go".into(),
+                                vec![
+                                    (
+                                        Unit(
+                                            "y".into(),
+                                        ),
+                                        "nat".into(),
+                                    ),
+                                ],
+                                Infix(
+                                    Variable(
+                                        Unit(
+                                            "y".into(),
+                                        ),
+                                    ).into(),
+                                    "*".into(),
+                                    Infix(
+                                        Variable(
+                                            Unit(
+                                                "go".into(),
+                                            ),
+                                        ).into(),
+                                        " ".into(),
+                                        List(
+                                            vec![
+                                                Infix(
+                                                    Variable(
+                                                        Unit(
+                                                            "y".into(),
+                                                        ),
+                                                    ).into(),
+                                                    "-".into(),
+                                                    Nat(
+                                                        LONat {
+                                                            content: 1,
+                                                        },
+                                                    ).into(),
+                                                ).into(),
+                                            ],
+                                        ).into(),
+                                    ).into(),
+                                ),
+                                vec![].into(),
+                            ),
+                        ].into(),
+                    ),
+                    test.len(),
+                ),
+            },
+        )
+    );
 }

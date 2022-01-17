@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 use crate::funcs::{expect_str, expect_with_used, take, take_while};
 use crate::lang_obj::{Expr, Identifier, ParseError, Statement, Type, WhereClause};
+use crate::lang_obj::Expr::Variable;
 use crate::lang_obj::Identifier::Unit;
 use crate::lang_obj::Statement::FnDef;
 use crate::parse::{chainable, ExprParser, LengthQualifier, ListParser, ParseMetaData, Parser, ParseResult, TakeWhileParser};
@@ -13,7 +14,22 @@ pub struct IdentifierParser {
 }
 
 /// exact same as an IdentifierParser, but for expressions
-pub struct VariableParser(pub IdentifierParser);
+pub struct VariableParser {
+    pub id_parser: IdentifierParser,
+    pub excluded_keywords: HashSet<String>
+}
+
+impl VariableParser {
+    pub fn default(id_parser: IdentifierParser) -> VariableParser {
+        VariableParser {
+            id_parser,
+            excluded_keywords: vec![
+                "if",
+                "else"
+            ].into_iter().map(ToString::to_string).collect()
+        }
+    }
+}
 
 /// might change in the future?
 pub struct TypeParser(pub IdentifierParser);
@@ -21,7 +37,7 @@ pub struct TypeParser(pub IdentifierParser);
 // quick from just to make it clear
 impl From<IdentifierParser> for VariableParser {
     fn from(ip: IdentifierParser) -> Self {
-        VariableParser(ip)
+        VariableParser::default(ip)
     }
 }
 impl From<IdentifierParser> for TypeParser {
@@ -98,7 +114,27 @@ impl Parser for VariableParser {
     type Output = Expr;
 
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        ParseResult(self.0.parse(content, consume, context)).map_inner(Expr::Variable).0
+        ParseResult(self.id_parser.parse(content, consume, context))
+            .0.and_then(|hs| {
+                let rest: HashSet<_> = hs.into_iter().filter_map(
+                    |(e, used)| {
+                        if let Unit(ident) = &e {
+                            if self.excluded_keywords.contains(ident) {
+                                None
+                            } else {
+                                Some((Variable(e), used))
+                            }
+                        } else {
+                            Some((Variable(e), used))
+                        }
+                    })
+                    .collect();
+                if rest.len() == 0 {
+                    Err("No variables left after excluding keywords".into())
+                } else {
+                    Ok(rest)
+                }
+            })
     }
 }
 
@@ -106,8 +142,6 @@ impl Parser for LetParser {
     type Output = Statement;
 
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        let one_or_more_space = TakeWhileParser::whitespace(LengthQualifier::GEQ(1));
-        let maybe_space = TakeWhileParser::whitespace(LengthQualifier::GEQ(0));
         let result = expect_with_used(content, "let", "Expected 'let'".into());
         let result = ParseResult(result) // wrap with the result to do some chaining!
             .parse_some_whitespace(&content, false, context)

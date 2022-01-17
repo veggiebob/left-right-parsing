@@ -47,7 +47,12 @@ pub enum Expr {
     Func(Identifier, Box<Expr>),
 
     /// Any other symbol that would be used to identify a local variable
-    Variable(Identifier)
+    Variable(Identifier),
+
+    /// Represents an If-else style conditional
+    // syntax:
+    // if\s*<condition expr>\s*<true expr>\s*else\s*<false expr>
+    Conditional(Box<Expr>, Box<Expr>, Box<Expr>)
 }
 
 #[derive(Eq, PartialEq, Debug, Clone)]

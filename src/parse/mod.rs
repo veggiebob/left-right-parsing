@@ -36,6 +36,12 @@ impl<O: Hash + Eq + Clone> Clone for ParseResult<O> {
     }
 }
 
+impl<T: Hash + Eq> ParseResult<T> {
+    pub fn empty() -> ParseResult<bool> {
+        ParseResult(Ok(hashset![(true, 0)]))
+    }
+}
+
 impl<T: Hash + Eq + Clone> ParseResult<T> {
     /// quick way to combine parses.
     /// if you just do the types, it should be pretty straight forward
@@ -129,6 +135,27 @@ impl<T: Hash + Eq + Clone> ParseResult<T> {
         )
     }
 
+    pub fn parse_expression<R, F>(self,
+                            content: &String,
+                            consume: bool,
+                            context: ParseMetaData,
+                            expr_parser: Rc<ExprParser>,
+                            constructor: F
+    ) -> ParseResult<R>
+        where F: Fn(T, Expr) -> R,
+              R: Hash + Eq
+    {
+        self.chain(
+            content,
+            consume,
+            context,
+            chainable(|_prev, next, _meta| {
+                expr_parser.parse(&next, consume, context)
+            }),
+            constructor
+        )
+    }
+
     /// by being able to clone both, you can add them together
     pub fn merge(&self, other: &ParseResult<T>) -> ParseResult<T> {
         match &self.0 {
@@ -216,6 +243,11 @@ pub struct InfixParser {
 /// example: "(123)"
 ///          "(9 + 21)"
 pub struct ParentheticalParser {
+    pub expr_parser: Rc<ExprParser>
+}
+
+/// Parse if statements.
+pub struct ConditionalParser {
     pub expr_parser: Rc<ExprParser>
 }
 
@@ -510,6 +542,45 @@ impl Parser for ListParser {
                     Err("ListParser: No possible parses!".into())
                 }
             })
+    }
+}
+
+impl Parser for ConditionalParser {
+    type Output = Expr;
+
+    fn parse(&self, content: &String, consume: bool, meta: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        let expr_parser = Rc::clone(&self.expr_parser);
+        ParseResult::<bool>::empty()
+            .parse_static_text(&content, false, meta, "if")
+            .parse_any_whitespace(&content, false, meta)
+            .parse_expression(
+                content,
+                false,
+                meta,
+                Rc::clone(&expr_parser),
+                |_, expr|
+                    expr
+            )
+            .parse_any_whitespace(&content, false, meta)
+            .parse_expression(
+                content,
+                false,
+                meta,
+                Rc::clone(&expr_parser),
+                |cond, then_true|
+                    (cond, then_true)
+            )
+            .parse_any_whitespace(&content, false, meta)
+            .parse_static_text(&content, false, meta, "else")
+            .parse_any_whitespace(&content, false, meta)
+            .parse_expression(content, consume, meta, Rc::clone(&expr_parser), |(cond, then), then_else|
+                Expr::Conditional(
+                    cond.into(),
+                    then.into(),
+                    then_else.into()
+                )
+            )
+            .0
     }
 }
 
