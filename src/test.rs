@@ -963,7 +963,7 @@ fn omega_gigachad_function_test() {
     const INFIX_ADDITION_SYMBOL: &str = "+"; // for expressions, like "+" in "3 + 4"
     const INFIX_MULTIPLICATION_SYMBOL: &str = "*"; // for expressions like "*" in "3 * 4"
     const INFIX_SUBTRACTION_SYMBOL: &str = "-"; // for expressions like "-" in "4 - 3"
-    const INFIX_FUNCTION_SYMBOL: &str = "$"; // for expressions like "$" in "func $ [arg]"
+    const INFIX_FUNCTION_SYMBOL: &str = " "; // for expressions like "$" in "func $ [arg]"
     const LIST_SEPARATOR_SYMBOL: char = ','; // for list expressions, like ',' in "[1, 2, 3]"
     const IDENTIFIER_ALLOWED_CHARS: &str = "_"; // also, by default, includes a-zA-Z
     const FUNCTION_ARGUMENT_SEPARATOR: char = ','; // seems simple
@@ -1087,9 +1087,9 @@ fn omega_gigachad_function_test() {
 
     // multiply_by_two [x: double] => x + x
 
-    let test = String::from("fibonacci [x: nat] => go $ x
+    let test = String::from("fibonacci [x: nat] => go x
         where {
-            go [y: nat] => y * (go $ [y-1])
+            go [y: nat] => y * (go [y-1])
         }");
 
     // vanity test
@@ -1119,7 +1119,7 @@ fn omega_gigachad_function_test() {
                                     "go".into(),
                                 ),
                             ).into(),
-                            "$".into(),
+                            " ".into(),
                             Variable(
                                 Unit(
                                     "x".into(),
@@ -1150,7 +1150,7 @@ fn omega_gigachad_function_test() {
                                                 "go".into(),
                                             ),
                                         ).into(),
-                                        "$".into(),
+                                        " ".into(),
                                         List(
                                             vec![
                                                 Infix(
@@ -1174,7 +1174,7 @@ fn omega_gigachad_function_test() {
                             ),
                         ].into(),
                     ),
-                    98,
+                    94,
                 )
             },
         )
