@@ -357,7 +357,116 @@ fn parse_deep_infix() {
             ]
         )
     );
+}
 
+#[test]
+fn parse_spaced_infix() {
+    // combine infix and parenthetical parser for big expression parsing power!
+    let string_parser = Rc::new(box_expr_parser!(StringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+
+    // start off with a couple simple parsers
+    let root_parsers = RefCell::new(vec![
+        &string_parser,
+        &nat_parser
+    ].into_iter().map(Rc::downgrade).collect());
+
+    // collect them together with an ExprParser
+    let parser = Rc::new(ExprParser {
+        parsers: root_parsers
+    });
+
+    // create a parenthetical parser, that uses the expr_parser to parse interior expressions
+    let parenthetical_parser = Rc::new(box_expr_parser!(ParentheticalParser {
+        expr_parser: Rc::clone(&parser)
+    }));
+
+    // add the parenthetical parser to the list of parsers in the expression parser
+    parser.parsers.borrow_mut().push(Rc::downgrade(&parenthetical_parser));
+
+    // same with infix
+    let infix_parser = Rc::new(box_expr_parser!(InfixParser {
+        expr_parser: Rc::clone(&parser),
+        infix: " ".to_string(),
+    }));
+    parser.parsers.borrow_mut().push(Rc::downgrade(&infix_parser));
+
+    // test time!
+    let context = ParseMetaData::new();
+    let test = "12 13".to_string();
+    assert_eq!(
+        parser.parse(&test, true, context),
+        Ok(
+            hashset!{
+                (
+                    Infix(
+                        Nat(
+                            LONat {
+                                content: 12,
+                            },
+                        ).into(),
+                        " ".into(),
+                        Nat(
+                            LONat {
+                                content: 13,
+                            },
+                        ).into(),
+                    ),
+                    5,
+                ),
+            },
+        )
+    );
+
+    let test = "12  13".to_string();
+    assert_eq!(
+        parser.parse(&test, true, context),
+        Ok(
+            hashset!{
+                (
+                    Infix(
+                        Nat(
+                            LONat {
+                                content: 12,
+                            },
+                        ).into(),
+                        " ".into(),
+                        Nat(
+                            LONat {
+                                content: 13,
+                            },
+                        ).into(),
+                    ),
+                    6,
+                ),
+            },
+        )
+    );
+
+    let test = "12   13".to_string();
+    assert_eq!(
+        parser.parse(&test, true, context),
+        Ok(
+            hashset!{
+                (
+                    Infix(
+                        Nat(
+                            LONat {
+                                content: 12,
+                            },
+                        ).into(),
+                        " ".into(),
+                        Nat(
+                            LONat {
+                                content: 13,
+                            },
+                        ).into(),
+                    ),
+                    7,
+                ),
+            },
+        )
+    );
 }
 
 #[test]
@@ -989,6 +1098,8 @@ fn omega_gigachad_function_test() {
 
     assert_eq!(
         parser.parse(&test, true, context),
+
+        // almost straight from {:#?}
         Ok(
             hashset!{
                 (

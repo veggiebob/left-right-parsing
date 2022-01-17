@@ -9,6 +9,7 @@ use std::task::Context;
 
 use crate::funcs::{char_at, expect_str, take, take_while};
 use crate::lang_obj::{Expr, LONat, LOString, ParseError};
+use crate::lang_obj::Expr::Infix;
 
 pub mod structure_parsers;
 
@@ -351,65 +352,26 @@ impl Parser for InfixParser {
                 format!("Just parsed an infix, not going to parse another one!").into()
             )
         }
-
-        // parse first expression
-        // not consuming because even if it's ordered to consume all, the decision happens lower
-        let meta = meta.increment_depth();
-        self.expr_parser.parse(content, false, meta.with_infix()).and_then(|parses| {
-            let good_parses = parses.into_iter()
-                .map(|(expr, used)| {
-                    let rest = take(content, used).unwrap().1;
-                    let (b, rest) = take_while(&rest, |c| c.is_whitespace());
-                    let index = used + b.len();
-                    let used = used + b.len() + self.infix.len();
-                    // parse infix
-                    expect_str(&rest, self.infix.as_str(),
-                               ParseError {
-                                   location: Some(index),
-                                   range: None,
-                                   message: format!("Expected an operator {}", self.infix)
-                               },
-                        "Expected more string space".into()
-                    ).map(|rest| {
-                        let (white, rest) = take_while(&rest, |c| c.is_whitespace());
-                        (expr, rest, used + white.len())
-                    })
-                })
-                .filter_map(|res| {
-                    // parse next expression (through errors)
-                    res
-                        .map(|(expr1, str, used1)| {
-                            // now, here, we must consume if it is wished
-                            self.expr_parser.parse(&str, consume, meta)
-                                .map(|parses|
-                                    parses.into_iter()
-                                        // filter out results if it doesn't consume the rest of the string
-                                        // I'm not sure if this is necessary, but I'll leave it here
-                                        .filter(|p| !consume || p.1 == str.len())
-                                        .map(|(expr2, used2)| {
-                                            (
-                                                Expr::Infix(
-                                                    Box::new(expr1.clone()),
-                                                    self.infix.clone(),
-                                                    Box::new(expr2)
-                                                ),
-                                                used1 + used2
-                                            )
-                                        })
-                                        .collect::<HashSet<_>>()
-                                )
-                        })
-                        .ok()
-                })
-                .filter_map(Result::ok)
-                .flatten()
-                .collect::<HashSet<_>>();
-            if good_parses.len() == 0 {
-                Err("No possible parses".into())
-            } else {
-                Ok(good_parses)
-            }
-        })
+        ParseResult(self.expr_parser.parse(&content, false, meta.with_infix()))
+            .parse_any_whitespace(&content, false, meta)
+            .parse_static_text(&content, false, meta, &self.infix)
+            .parse_any_whitespace(&content, false, meta)
+            .chain(
+                &content,
+                consume,
+                meta.increment_depth(),
+                chainable(|_prev_expr, next, meta| {
+                    self.expr_parser.parse(&next, consume, meta)
+                }),
+                |expr1, expr2| {
+                    Infix(
+                        expr1.into(),
+                        self.infix.clone(),
+                        expr2.into()
+                    )
+                }
+            )
+            .0
     }
 }
 
