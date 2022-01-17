@@ -2,8 +2,9 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 use crate::funcs::{expect_str, expect_with_used, take, take_while};
-use crate::lang_obj::{Expr, Identifier, ParseError, Statement};
+use crate::lang_obj::{Expr, Identifier, ParseError, Statement, Type, WhereClause};
 use crate::lang_obj::Identifier::Unit;
+use crate::lang_obj::Statement::FnDef;
 use crate::parse::{chainable, ExprParser, LengthQualifier, ListParser, ParseMetaData, Parser, ParseResult, TakeWhileParser};
 
 pub struct IdentifierParser {
@@ -34,6 +35,13 @@ pub struct StatementParser {
 }
 
 pub type GenericStatementParser = Box<dyn Parser<Output=Statement>>;
+
+#[macro_export]
+macro_rules! box_stmt_parser {
+    ($parser:expr) => {
+        Box::new($parser) as Box<dyn Parser<Output=Statement>>
+    }
+}
 
 pub struct LetParser {
     pub id_parser: Rc<IdentifierParser>,
@@ -141,6 +149,57 @@ impl Parser for LetParser {
     }
 }
 
+#[derive(Clone, Eq, PartialEq, Debug, Hash)]
+struct BaseFnDef {
+    pub name: String,
+    pub args: Vec<(Identifier, Type)>,
+    pub expr: Expr,
+    pub where_clause: WhereClause
+}
+impl From<BaseFnDef> for Statement {
+    fn from(stmt: BaseFnDef) -> Self {
+        Statement::FnDef(
+            stmt.name,
+            stmt.args,
+            stmt.expr,
+            stmt.where_clause
+        )
+    }
+}
+
+impl FnDefParser {
+    /// Create an incomplete or base function (no where-clause) definition using
+    /// an identifier, arguments, and an expression
+    fn create_base_fndef(ident: Identifier, args: Expr, expr: Expr) -> Option<BaseFnDef> {
+        if let Unit(name) = ident {
+            if let Expr::List(expr_args) = args {
+                let mut args = vec![];
+                for arg in expr_args {
+                    if let Expr::Infix(ident, _, type_name) = *arg {
+                        if let Expr::Variable(ident) = *ident {
+                            if let Expr::Variable(Unit(type_name)) = *type_name {
+                                args.push((ident, type_name));
+                            }
+                        }
+                    }
+                }
+                Some(
+                    BaseFnDef {
+                        name,
+                        args,
+                        expr,
+                        where_clause: Box::new(vec![]) // empty where-clause for now
+                    }
+                )
+            } else {
+                None // args weren't a list
+            }
+        } else {
+            None // name wasn't a unit string
+        }
+    }
+}
+
 impl Parser for FnDefParser {
     type Output = Statement;
 
@@ -197,56 +256,137 @@ impl Parser for FnDefParser {
                 |(ident, args), expr| (ident, args, expr)
             );
 
+        // attempt a 'where' on it
         let with_where = root.clone()
             .parse_any_whitespace(&content, false, ctx)
             .parse_static_text(&content, false, ctx, "where")
             .parse_any_whitespace(&content, false, ctx)
-            .parse_static_text(&content, false, ctx, "{");
+            .parse_static_text(&content, false, ctx, "{")
+            .parse_any_whitespace(&content, false, ctx);
 
+        let mut final_set = ParseResult(root.0.map(|hs| hs.into_iter().filter_map(
+            |((ident, args, expr), used)| {
+                if !consume || used == content.len() {
+                    if let Some(stmt) = FnDefParser::create_base_fndef(ident, args, expr) {
+                        Some((stmt.into(), used))
+                    } else {
+                        None // unable to create a function definition based on this
+                    }
+                } else {
+                    None // consume problems
+                }
+            }
+        ).collect::<HashSet<_>>())
+            .and_then(|hs|
+                if hs.len() > 0 {
+                    Ok(hs)
+                } else {
+                    Err("No possibilities".into())
+                }
+            )
+        );
+
+        // if there is a 'where' statement
         if with_where.0.is_ok() {
-
+            // parse some whitespace
             let where_statements = with_where.clone()
                 .parse_any_whitespace(&content, false, ctx);
-            // meh, finish later
-            // test first!
-        }
 
-        // temporary solution
-        root.0.map(|hs| hs.into_iter().filter_map(
-            |((ident, args, expr), used)| {
-                if let Unit(name) = ident {
-                    if let Expr::List(expr_args) = args {
-                        let mut args = vec![];
-                        for arg in expr_args {
-                            if let Expr::Infix(ident, _, type_name) = *arg {
-                                if let Expr::Variable(ident) = *ident {
-                                    if let Expr::Variable(Unit(type_name)) = *type_name {
-                                        args.push((ident, type_name));
+            if let Ok(where_statements) = where_statements.0 {
+                //
+                let mut where_statements = where_statements.into_iter()
+                    .filter_map(|((ident, args, expr), used)| {
+                        FnDefParser::create_base_fndef(ident, args, expr)
+                            .map(|stmt| (stmt, used))
+                    }).collect::<HashSet<_>>();
+                // now continue attempting to parse statements until a '}' is reached
+                let mut finalized = hashset![];
+                while where_statements.len() > 0 {
+
+                    // first, check if we can finish off any
+                    let end_statement = ParseResult(Ok(where_statements.clone()))
+                        .parse_static_text(&content, false, context, "}");
+                    end_statement.0.map(|hs| {
+                        hs.into_iter().for_each(|x| {
+                            finalized.insert(x);
+                        })
+                    });
+
+                    // otherwise, we're gonna have to look for another statement
+                    let next_statement = ParseResult(Ok(where_statements.clone()))
+                        .chain(
+                            &content,
+                            false,
+                            context,
+                            chainable(|_fndef, next, meta| {
+                                self.statement_parser.parse(&next, false, meta.increment_depth())
+                            }),
+                            |fndef, stmt| {
+                                BaseFnDef {
+                                    name: fndef.name,
+                                    args: fndef.args,
+                                    expr: fndef.expr,
+                                    where_clause: {
+                                        let mut stmts = vec![stmt];
+                                        stmts.extend(*fndef.where_clause);
+                                        Box::new(stmts)
                                     }
                                 }
                             }
-                        }
-                        if !consume || used == content.len() {
-                            Some((
-                                Statement::FnDef(
-                                    name,
-                                    args,
-                                    expr,
-                                    Box::new(vec![])
-                                ),
-                                used
-                            ))
-                        } else {
-                            None // didn't consume everything
-                        }
+                        ).parse_any_whitespace(&content, false, context);
+                    where_statements = match next_statement.0 {
+                        Ok(stmts) => stmts,
+                        Err(e) => hashset![]
+                    };
+                }
+                // filter out statements that don't meet consuming rules
+                // (and also map them)
+                let finalized = finalized.into_iter().filter_map(|(e, used)| {
+                    if !consume || used == content.len() {
+                        Some((Statement::from(e), used))
                     } else {
-                        None // args weren't a list
+                        None
                     }
-                } else {
-                    None // wasn't a unit
+                }).collect::<HashSet<_>>();
+                if finalized.len() > 0 {
+                    let finalized = ParseResult(Ok(finalized));
+                    final_set = final_set.merge(&finalized);
                 }
             }
-        ).collect())
+        }
+        final_set.0
+    }
+}
 
+
+impl Parser for StatementParser {
+    type Output = Statement;
+
+    fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        let mut out = HashSet::new();
+        let mut err_messages = "".to_string();
+
+        for parser in self.parsers.borrow().iter() {
+            if let Some(parser) = parser.upgrade() {
+                match parser.parse(content, consume, context) {
+                    Ok(parses) => {
+                        for p in parses {
+                            out.insert(p);
+                        }
+                    },
+                    Err(e) => {
+                        err_messages += &*("\n".to_string() + e.message.as_str());
+                    }
+                }
+            } else {
+                // for some reason the pointer has deteriorated???
+            }
+        }
+
+        if out.len() > 0 {
+            Ok(out)
+        } else {
+            Err(format!("No valid statements. {} tried. {}", self.parsers.borrow().len(), err_messages).into())
+        }
     }
 }

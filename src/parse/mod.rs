@@ -156,6 +156,17 @@ impl<T: Hash + Eq + Clone> ParseResult<T> {
             }
         }
     }
+
+    pub fn map_inner<X: Hash + Eq, F: Fn(T) -> X>(self, f: F) -> ParseResult<X> {
+        ParseResult(
+            self.0.map(
+                |hs|
+                    hs.into_iter()
+                        .map(|(e, used)| (f(e), used)).collect()
+            )
+        )
+
+    }
 }
 
 /// function to convert the usual parse function into the acceptable chain function
@@ -173,7 +184,7 @@ pub fn chainable<S, F, T>(f: F) -> impl Fn(&T, String, ParseMetaData) -> Option<
 pub type GenericExprParser = Box<dyn Parser<Output=Expr>>;
 
 #[macro_export]
-macro_rules! box_parser {
+macro_rules! box_expr_parser {
     ($parser:expr) => {
         Box::new($parser) as Box<dyn Parser<Output=Expr>>
     }
@@ -235,7 +246,7 @@ impl Parser for ExprParser {
                             for r in result {
                                 out.insert(r);
                             }
-                        }
+                        },
                         Err(e) => {
                             // println!("Unable to parse because {:?}", e);
                             // fail silently (unless debugging) because failures might not mean anything

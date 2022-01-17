@@ -95,15 +95,15 @@ impl From<LONat> for Expr {
 }
 
 
-type Type = String;
+pub type Type = String;
 
-type WhereClause = Box<Vec<Statement>>;
+pub type WhereClause = Box<Vec<Statement>>;
 
 pub struct Program {
     content: Vec<Statement>
 }
 
-#[derive(Eq, PartialEq, Hash, Debug)]
+#[derive(Eq, PartialEq, Hash, Debug, Clone)]
 pub enum Statement {
 
     /// let expression
