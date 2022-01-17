@@ -516,6 +516,17 @@ fn list_test_1() {
             )
         ])
     );
+
+    let test = "[]".to_string();
+    assert_eq!(
+        parser.parse(&test, true, ParseMetaData::new()),
+        Ok(hashset![
+            (
+                Expr::List(vec![]),
+                2
+            )
+        ])
+    );
 }
 
 #[test]
@@ -1341,8 +1352,8 @@ fn omega_gigachad_function_test() {
         }");
 
     // vanity test
-    println!("length: {}", test.len());
-    println!("{:#?}", parser.parse(&test, true, context));
+    // println!("length: {}", test.len());
+    // println!("{:#?}", parser.parse(&test, true, context));
 
 
     assert_eq!(
@@ -1446,4 +1457,9 @@ fn omega_gigachad_function_test() {
             },
         )
     );
+
+    // empty lists DO work!
+    // let test = "add_things[] => 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10".to_string();
+    // println!("length: {}", test.len());
+    // println!("{:#?}", parser.parse(&test, true, context));
 }

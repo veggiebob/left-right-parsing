@@ -461,6 +461,17 @@ impl Parser for ListParser {
                     "ListParser: expecting '['".into(),
                         "ListParser: expected longer string".into())
             .and_then(|rest| {
+
+                // check if it's empty
+                let empty_list = ParseResult::<bool>::empty()
+                    .parse_any_whitespace(&rest, false, context)
+                    .parse_static_text(&rest, consume, context, "]");
+                if empty_list.0.is_ok() {
+                    return empty_list.map_inner(|_b| Expr::List(vec![])).0
+                        .map(|hs|
+                        hs.into_iter().map(|(e, used)| (e, used + 1)).collect())
+                }
+
                 // used 1
                 let meta = context.increment_depth();
 
