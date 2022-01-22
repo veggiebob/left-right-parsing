@@ -7,7 +7,7 @@ Try inputting some examples and observe the AST output:
 `add_one [x: nat] => x + 1`
 
 ```
-fibonacci [x: nat] => if x=0 1 else go x
+factorial [x: nat] => if x=0 1 else go x
         where {
             go [y: nat] => y * (go [y-1])
         }
@@ -111,3 +111,16 @@ parsing. This makes the most sense to me in terms of representation of an AST yo
 in a production programming language. However, the parsers implemented are in no way bound by any rules
 other than the fact that **tokenizing is discouraged** and everything should be read **exclusively
 left-to-right.**
+
+Also note that because ambiguity is a **feature**, some parsed statements or expressions may have multiple solutions. 
+This is expected in many cases, because there is no goal for an end in ambiguity. Specificity can always be added
+with parentheses if necessary, but the flexibility in syntax is never taken away.
+These multiple solutions are shown as a hashset containing every unique solution.
+
+This is especially obvious in the factorial example, since there is an infix operator with
+the infix string being `" "` (that being a space). No surprise, this causes lots of ambiguities!
+However, it also allows for the "function calling" syntax as seen in the example without any other syntax specification.
+
+If it were part of a real programming language, these different possibilities as results would be paired with some 
+sort of semantic evaluation program that rejects some "variables" or "identifiers" that might have been parsed
+that aren't actually variables or valid identifiers. Those would be ruled out at a later stage. 

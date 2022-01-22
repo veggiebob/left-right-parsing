@@ -1346,7 +1346,7 @@ fn omega_gigachad_function_test() {
 
 
     // actual fibo!
-    let test = String::from("fibonacci [x: nat] => if x=0 1 else go x
+    let test = String::from("factorial [x: nat] => if x=0 1 else go x
         where {
             go [y: nat] => y * (go [y-1])
         }");
@@ -1362,7 +1362,7 @@ fn omega_gigachad_function_test() {
             hashset!{
                 (
                     FnDef(
-                        "fibonacci".into(),
+                        "factorial".into(),
                         vec![
                             (
                                 Unit(
