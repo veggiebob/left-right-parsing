@@ -26,9 +26,6 @@ fn input() -> String {
 
 fn main() {
 
-    // todo at some point I should write ToString for all the AST objects so that the different
-    //  interpretations can be converted into strings.
-
     // set up parsers
     // afaik this can't be done in a function reasonably with the structures I have
 
@@ -173,8 +170,8 @@ fn main() {
         if obj == ":q".to_string() {
             break;
         }
-        println!("{:#?}",
-                 parser.parse(&obj, true, ParseMetaData::new())
+        println!("{}",
+                 ParseResult(parser.parse(&obj, true, ParseMetaData::new())).to_string()
         );
     }
     println!("Leaving demo.");

@@ -2,6 +2,7 @@ use core::convert::From;
 use core::option::Option;
 use core::option::Option::None;
 use std::collections::HashSet;
+use crate::lang_obj::Identifier::Unit;
 use crate::parse::{ParseMetaData, Parser};
 
 #[derive(Eq, PartialEq, Debug, Hash, Clone)]
@@ -101,12 +102,13 @@ impl From<LONat> for Expr {
 }
 
 
-pub type Type = String;
+pub type IdentifierType = String;
 
 pub type WhereClause = Box<Vec<Statement>>;
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Program {
-    content: Vec<Statement>
+    pub content: Vec<Statement>
 }
 
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
@@ -118,7 +120,7 @@ pub enum Statement {
 
     /// function definition
     // (name, arguments, body, where-clause)
-    FnDef(String, Vec<(Identifier, Type)>, Expr, WhereClause),
+    FnDef(String, Vec<(Identifier, IdentifierType)>, Expr, WhereClause),
 
 }
 
@@ -132,4 +134,76 @@ pub enum Identifier {
     // using this system of parsing, we should be able to include *MANY* characters
     // that can be used in values
     Unit(String)
+}
+
+impl ToString for Identifier {
+    fn to_string(&self) -> String {
+        match self {
+            Unit(x) => x.clone()
+        }
+    }
+}
+
+impl ToString for Statement {
+    fn to_string(&self) -> String {
+        match self {
+            Statement::Let(ident, expr) => format!("let {} = {}", ident.to_string(), expr.to_string()),
+            Statement::FnDef(name, args, expr, wheres) => {
+                format!("function {} ({}) => {}{}",
+                    name,
+                    args.iter().map(|(ident, ident_type)| {
+                        format!("{}: {}", ident.to_string(), ident_type)
+                    }).collect::<Vec<_>>().join(", "),
+                    expr.to_string(),
+                        if wheres.len() > 0 {
+                            format!(" where {} {} {}",
+                            "{",
+                            wheres.iter().map(ToString::to_string)
+                                .collect::<Vec<_>>().join("\n"),
+                            "}")
+                        } else { "".to_string() }
+                )
+            }
+        }
+    }
+}
+
+impl ToString for Expr {
+    fn to_string(&self) -> String {
+        match self {
+            Expr::Nat(x) => x.content.to_string(),
+            Expr::Str(s) => format!("\"{}\"", s.content.clone()),
+            Expr::Infix(left, infix, right) => {
+                format!("({} {} {})", left.to_string(), infix.clone(), right.to_string())
+            }
+            Expr::List(xs) => {
+                format!("[{}]", xs.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(", "))
+            }
+            Expr::Func(rator, rand) => {
+                todo!("Function syntax")
+            }
+            Expr::Variable(x) => x.to_string(),
+            Expr::Conditional(cond, then, then_else) => {
+                format!("if ({}) {} {} {} else {} {} {}",
+                        cond.to_string(), "{",
+                            then.to_string(),
+                        "}", "{",
+                            then_else.to_string(),
+                        "}"
+                )
+            }
+        }
+    }
+}
+
+impl ToString for Program {
+    fn to_string(&self) -> String {
+        format!(
+            "Program: {}
+{}
+{}", "{",
+            self.content.iter().map(|x| format!("  {}", x.to_string())).collect::<Vec<_>>().join("\n"),
+            "}"
+        )
+    }
 }
