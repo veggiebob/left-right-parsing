@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 use crate::funcs::{expect_str, expect_with_used, take, take_while};
-use crate::lang_obj::{Expr, Identifier, ParseError, Statement, Type, WhereClause};
+use crate::lang_obj::{Expr, Identifier, ParseError, Statement, IdentifierType, WhereClause};
 use crate::lang_obj::Expr::Variable;
 use crate::lang_obj::Identifier::Unit;
 use crate::lang_obj::Statement::FnDef;
@@ -25,7 +25,8 @@ impl VariableParser {
             id_parser,
             excluded_keywords: vec![
                 "if",
-                "else"
+                "else",
+                "let"
             ].into_iter().map(ToString::to_string).collect()
         }
     }
@@ -184,7 +185,7 @@ impl Parser for LetParser {
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
 struct BaseFnDef {
     pub name: String,
-    pub args: Vec<(Identifier, Type)>,
+    pub args: Vec<(Identifier, IdentifierType)>,
     pub expr: Expr,
     pub where_clause: WhereClause
 }

@@ -12,6 +12,7 @@ use crate::lang_obj::{Expr, LONat, LOString, ParseError};
 use crate::lang_obj::Expr::Infix;
 
 pub mod structure_parsers;
+pub mod program_parsing;
 
 pub trait Parser {
     /// Type of object to produce during parsing
@@ -39,6 +40,40 @@ impl<O: Hash + Eq + Clone> Clone for ParseResult<O> {
 impl<T: Hash + Eq> ParseResult<T> {
     pub fn empty() -> ParseResult<bool> {
         ParseResult(Ok(hashset![(true, 0)]))
+    }
+    pub fn len(&self) -> usize {
+        match &self.0 {
+            Ok(hs) => hs.len(),
+            Err(_err) => 0
+        }
+    }
+}
+
+impl<T: ToString + Hash + Eq + Clone> ToString for ParseResult<T> {
+    fn to_string(&self) -> String {
+        match self.simplified_results() {
+            Ok(hs) => {
+                if hs.len() > 1 {
+                    let mut out = format!("{} possibilities:\n", hs.len());
+                    for e in hs {
+                        // out += & *format!("{} <<<{}>>>", e.to_string(), used);
+                        out += &*format!("{}", e.to_string());
+                        out += "\n";
+                    }
+                    out
+                } else if hs.len() == 0 {
+                    panic!("This should be impossible!");
+                } else {
+                    let mut out = String::new();
+                    for e in hs {
+                        out = e.to_string();
+                        break;
+                    }
+                    out
+                }
+            },
+            Err(err) => format!("{:?}", err)
+        }
     }
 }
 
@@ -194,7 +229,14 @@ impl<T: Hash + Eq + Clone> ParseResult<T> {
                         .map(|(e, used)| (f(e), used)).collect()
             )
         )
+    }
 
+    pub fn simplified_results(&self) -> Result<HashSet<T>, ParseError> {
+        self.0.as_ref()
+            .map_err(|e| e.clone())
+            .map(|hs|
+                hs.iter().map(|(x, _used)| x.clone()).collect()
+            )
     }
 }
 
