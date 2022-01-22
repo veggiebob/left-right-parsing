@@ -272,9 +272,11 @@ impl Parser for ExprParser {
         // bonus: can users define their own expression patterns?
         let mut out = HashSet::new();
         let mut err_messages = "".to_string();
+        let mut num_tried = 0;
         for parser in self.parsers.borrow().iter() {
             match parser.upgrade() {
                 Some(parser) => {
+                    num_tried += 1;
                     match parser.parse(content, consume, meta.increment_depth_no_change_infix()) {
                         Ok(result) => {
                             for r in result {
@@ -295,7 +297,7 @@ impl Parser for ExprParser {
         }
         let possible_parses = out.len();
         if possible_parses == 0 {
-            Err(format!("No valid expressions. {} tried. {}", self.parsers.borrow().len(), err_messages).into())
+            Err(format!("No valid expressions. {} tried. {}", num_tried, err_messages).into())
         } else {
             Ok(out)
         }

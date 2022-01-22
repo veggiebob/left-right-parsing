@@ -397,11 +397,12 @@ impl Parser for StatementParser {
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
         let mut out = HashSet::new();
         let mut err_messages = "".to_string();
-
+        let mut num_tried = 0;
         for parser in self.parsers.borrow().iter() {
             if let Some(parser) = parser.upgrade() {
                 match parser.parse(content, consume, context) {
                     Ok(parses) => {
+                        num_tried += 1;
                         for p in parses {
                             out.insert(p);
                         }
@@ -418,7 +419,7 @@ impl Parser for StatementParser {
         if out.len() > 0 {
             Ok(out)
         } else {
-            Err(format!("No valid statements. {} tried. {}", self.parsers.borrow().len(), err_messages).into())
+            Err(format!("No valid statements. {} tried. {}", num_tried, err_messages).into())
         }
     }
 }
