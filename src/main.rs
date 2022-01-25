@@ -11,6 +11,7 @@ use crate::parse::structure_parsers::*;
 pub mod parse;
 pub mod lang_obj;
 pub mod funcs;
+pub mod semantic_validation;
 
 #[cfg(test)]
 pub mod test;
