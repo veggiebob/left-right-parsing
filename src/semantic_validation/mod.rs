@@ -62,14 +62,10 @@ pub struct ProgramValidator;
 /// evaluates whether or not
 /// a statement (function definition or let statement)
 /// is valid.
-pub struct StatementValidator(ScopeFrame);
-
-/// Evaluates whether or not a function definition is
-/// valid.
-pub struct FunctionValidator(ScopeFrame);
+pub struct StatementValidator(pub ScopeFrame);
 
 /// Evaluates whether or not an expression is valid.
-pub struct ExpressionValidator(ScopeFrame);
+pub struct ExpressionValidator(pub ScopeFrame);
 
 impl Validator<Program> for ProgramValidator {
     fn validate(&self, structure: &Program) -> Result<(), String> {
@@ -94,8 +90,10 @@ impl Validator<Statement> for StatementValidator {
             let expr_validator = ExpressionValidator(self.0.new_with(hashset![ident.clone()]));
             expr_validator.validate(expr)
         } else if let Statement::FnDef(name, args, expr, wheres) = structure {
-            let mut new_f_idents = args.iter().map(|(ident, _type)| ident.clone()).collect();
+            let mut new_f_idents: HashSet<Identifier> = args.iter().map(|(ident, _type)| ident.clone()).collect();
             new_f_idents.extend(vec![Identifier::Unit(name.clone())]); // add the function name (for recursion)
+
+            // start the new scope with function name and argument identifiers
             let mut func_scope = self.0.new_with(new_f_idents);
 
             // we gonna need the where-idents
@@ -111,20 +109,50 @@ impl Validator<Statement> for StatementValidator {
                 });
 
             // first, let the statements be evaluated.
-            let stmt_validator = StatementValidator(func_scope);
+            let stmt_validator = StatementValidator(func_scope.clone());
             for stmt in wheres.iter() {
                 stmt_validator.validate(stmt)?;
             }
 
             // now validate the expression
-            todo!()
+            let expr_validator = ExpressionValidator(func_scope.clone());
+            expr_validator.validate(expr)
 
+        } else {
+            Ok(()) // ???
         }
     }
 }
 
 impl Validator<Expr> for ExpressionValidator {
     fn validate(&self, structure: &Expr) -> Result<(), String> {
-        todo!()
+        match structure {
+            Expr::Nat(_) => Ok(()),
+            Expr::Str(_) => Ok(()),
+            Expr::Infix(left, _, right) => {
+                self.validate(left)?;
+                self.validate(right)
+            },
+            Expr::List(exprs) => {
+                for e in exprs.iter() {
+                    self.validate(e)?;
+                }
+                Ok(())
+            },
+            Expr::Func(_, _) => todo!(),
+            Expr::Variable(ident) => {
+                // finally!
+                if self.0.exists(ident) {
+                    Ok(())
+                } else {
+                    Err(format!("'{}' does not exist!", ident.to_string()))
+                }
+            }
+            Expr::Conditional(cond, then, then_else) => {
+                self.validate(cond)?;
+                self.validate(then)?;
+                self.validate(then_else)
+            }
+        }
     }
 }
