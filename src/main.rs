@@ -3,6 +3,7 @@
 use std::cell::RefCell;
 use std::io::Write;
 use std::ops::Add;
+use std::process::exit;
 use std::rc::Rc;
 use crate::lang_obj::{Statement, Expr};
 use crate::parse::*;
@@ -159,21 +160,122 @@ fn main() {
         Rc::downgrade(&let_parser)
     ]);
 
-    let parser = stmt_parser;
+    let args: Vec<_> = std::env::args().collect();
 
+    enum ParseMode {
+        Expression,
+        Statement,
+        Program
+    };
 
-    println!("Parse demo! Input a function definition or let expression.");
-    println!("Input a function definition, or `:q` to leave:");
-    loop {
-        print!("> ");
-        std::io::stdout().flush().unwrap(); // display >
-        let obj = input().trim().to_string(); // strip off extra space at beginning or end (parser is sensitive about that)
-        if obj == ":q".to_string() {
-            break;
+    enum RunMode {
+        Interactive,
+        Evaluation(String)
+    };
+
+    // 'i' for interactive
+    let run_mode = if args.len() > 1 {
+        let arg = args.get(1).unwrap();
+        if arg == "i" {
+            RunMode::Interactive
+        } else if arg == "e" {
+            if args.len() > 3 {
+                RunMode::Evaluation(args[3..].join(" ").to_string())
+            } else {
+                panic!("Expected a third argument for evaluation mode")
+            }
+        } else {
+            panic!("Expected 'i' or 'e' for a run mode.");
         }
-        println!("{}",
-                 ParseResult(parser.parse(&obj, true, ParseMetaData::new())).to_string()
-        );
+    } else {
+        fail()
+    };
+
+    let parse_mode = if args.len() > 2 {
+        let arg = args.get(2).unwrap();
+        if arg == "expr" {
+            ParseMode::Expression
+        } else if arg == "stmt" {
+            ParseMode::Statement
+        } else if arg == "prgm" {
+            ParseMode::Program
+        } else {
+            fail()
+        }
+    } else {
+        fail()
+    };
+
+    match run_mode {
+        RunMode::Interactive => {
+            println!("Parse demo!");
+            match parse_mode {
+                ParseMode::Expression => println!("Input an expression."),
+                ParseMode::Statement => println!("Input a statement."),
+                ParseMode::Program => panic!("Programs not implemented yet! Sorry!")
+            }
+            println!("Enter `:q` to leave.");
+            loop {
+                print!("> ");
+                std::io::stdout().flush().unwrap(); // display >
+                let obj = input().trim().to_string(); // strip off extra space at beginning or end (parser is sensitive about that)
+                if obj == ":q".to_string() {
+                    break;
+                }
+                // if anything, print the most user-friendly part here
+                match parse_mode {
+                    ParseMode::Expression => {
+                        println!(
+                            "{}",
+                            ParseResult(
+                                expr_parser.parse(&obj, true, ParseMetaData::new())
+                            ).to_string()
+                        );
+                    },
+                    ParseMode::Statement => {
+                        println!(
+                            "{}",
+                            ParseResult(
+                                stmt_parser.parse(&obj, true, ParseMetaData::new())
+                            ).to_string()
+                        );
+                    },
+                    ParseMode::Program => {
+                        panic!("Program parse mode still in progress!");
+                    }
+                }
+            }
+            println!("Leaving demo.");
+        },
+        RunMode::Evaluation(content) => {
+            let content = content.trim();
+            let content = String::from(content);
+            // print the most program-readable stuff
+            match parse_mode {
+                ParseMode::Expression => {
+                    println!(
+                        "{}",
+                        ParseResult(
+                            expr_parser.parse(&content, true, ParseMetaData::new())
+                        ).to_string()
+                    );
+                },
+                ParseMode::Statement => {
+                    println!(
+                        "{}",
+                        ParseResult(
+                            stmt_parser.parse(&content, true, ParseMetaData::new())
+                        ).to_string()
+                    );
+                },
+                ParseMode::Program => {
+                    panic!("Program parse mode still in progress!");
+                }
+            }
+        }
     }
-    println!("Leaving demo.");
+}
+
+fn fail() -> ! {
+    panic!("Expected 2 arguments: <i|e> <expr|stmt|prgm> <content>")
 }

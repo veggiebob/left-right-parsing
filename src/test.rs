@@ -1769,7 +1769,7 @@ pub fn test_program_validation() {
     let eval = |s: &str| {
         let s = format!("{} ", s);
         // figure out how to get consume to be true
-        program_parser.parse(&s, false, ParseMetaData::new()).unwrap()
+        program_parser.parse(&s, true, ParseMetaData::new()).unwrap()
     };
 
     let validate = |p: HashSet<(Program, usize)>| {
@@ -1794,7 +1794,8 @@ pub fn test_program_validation() {
         }
     };
 
-    let prgm1 = eval("let r = \"hello\" f[t:r]=>iftf t+1elser-1");
+    // let r = \"hello\" f[t:r]=>iftf t+1elser-1
+    let prgm1 = eval("f[x:t, z:t] => x * y where { let y = x * x }");
     for r in validate(prgm1) {
         println!("{}", r.to_string());
     }
