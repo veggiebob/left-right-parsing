@@ -8,6 +8,7 @@ use crate::{box_expr_parser, box_stmt_parser};
 use crate::funcs::{join, substring, take, take_while};
 use crate::lang_obj::{Expr, Identifier, LONat, LOString, Program};
 use crate::lang_obj::Expr::{Conditional, Infix, List, Nat, Str, Variable};
+use crate::lang_obj::formatting::{Format, JSON};
 use crate::lang_obj::Identifier::Unit;
 use crate::lang_obj::Statement;
 use crate::lang_obj::Statement::{FnDef, Let};
@@ -1358,6 +1359,10 @@ fn omega_gigachad_function_test() {
     // vanity test
     // println!("length: {}", test.len());
     // println!("{:#?}", parser.parse(&test, true, context));
+
+    // vanity json test
+    // let (expr, _) = parser.parse(&test, true, ParseMetaData::new()).unwrap().into_iter().next().unwrap();
+    // println!("json: {}", JSON::new(false).format(&expr));
 
 
     assert_eq!(

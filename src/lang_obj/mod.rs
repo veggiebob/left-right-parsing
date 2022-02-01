@@ -5,6 +5,8 @@ use std::collections::HashSet;
 use crate::lang_obj::Identifier::Unit;
 use crate::parse::{ParseMetaData, Parser};
 
+pub mod formatting;
+
 #[derive(Eq, PartialEq, Debug, Hash, Clone)]
 pub struct LOString {
     pub content: String
