@@ -75,7 +75,7 @@ impl Format<Statement> for JSON {
         let content: String = match ast {
             Statement::Let(ident, expr) =>
                 format!(
-                    "{}\"identifier:\"{},\"expr\":{}{}",
+                    "{}\"identifier\":{},\"expr\":{}{}",
                     "{",
                     quote(ident.to_string()),
                     self.format(expr),
