@@ -1,11 +1,14 @@
 #[macro_use] extern crate maplit;
 
 use std::cell::RefCell;
+use std::collections::HashSet;
+use std::hash::Hash;
 use std::io::Write;
 use std::ops::Add;
 use std::process::exit;
 use std::rc::Rc;
-use crate::lang_obj::{Statement, Expr};
+use crate::lang_obj::{Statement, Expr, Program, ParseError};
+use crate::lang_obj::formatting::{Format, JSON, Text};
 use crate::parse::*;
 use crate::parse::structure_parsers::*;
 
@@ -179,10 +182,11 @@ fn main() {
         if arg == "i" {
             RunMode::Interactive
         } else if arg == "e" {
-            if args.len() > 3 {
-                RunMode::Evaluation(args[3..].join(" ").to_string())
+            if args.len() > 4 {
+                RunMode::Evaluation(args[4..].join(" ").to_string())
             } else {
-                panic!("Expected a third argument for evaluation mode")
+                println!("Expected at least 4 arguments for evaluation mode");
+                fail()
             }
         } else {
             panic!("Expected 'i' or 'e' for a run mode.");
@@ -248,6 +252,50 @@ fn main() {
             println!("Leaving demo.");
         },
         RunMode::Evaluation(content) => {
+            let json_fmt = JSON::new(true);
+
+            type Formatter<T> = Box<dyn Fn(&T) -> String>;
+
+            // create formatters
+            let expr_fmt: Formatter<Expr> = if args.len() > 3 {
+                let arg = args.get(3).unwrap();
+                (match arg.as_str() {
+                    "debug" => Box::new(|x: &Expr| x.to_string()) as Formatter<Expr>,
+                    "json" => Box::new(move |x: &Expr| json_fmt.format(x).content) as Formatter<Expr>,
+                    "js" => panic!("Sorry, js isn't implemented yet"),
+                    "html" => panic!("Sorry, html isn't implemented yet"),
+                    x => panic!("Expected argument 3 (format mode) to be one of ['format', 'json', 'js', 'html'], not {}", x)
+                })
+            } else {
+                fail()
+            };
+
+            let stmt_fmt: Formatter<Statement> = if args.len() > 3 {
+                let arg = args.get(3).unwrap();
+                (match arg.as_str() {
+                    "debug" => Box::new(|x: &Statement| x.to_string()) as Formatter<Statement>,
+                    "json" => Box::new(move |x: &Statement| json_fmt.format(x).content) as Formatter<Statement>,
+                    "js" => panic!("Sorry, js isn't implemented yet"),
+                    "html" => panic!("Sorry, html isn't implemented yet"),
+                    x => panic!("Expected argument 3 (format mode) to be one of ['format', 'json', 'js', 'html'], not {}", x)
+                })
+            } else {
+                fail()
+            };
+
+            let prgm_fmt = if args.len() > 3 {
+                let arg = args.get(3).unwrap();
+                (match arg.as_str() {
+                    "debug" => Box::new(|x: &Program| x.to_string()) as Formatter<Program>,
+                    "json" => Box::new(move |x: &Program| json_fmt.format(x).content) as Formatter<Program>,
+                    "js" => panic!("Sorry, js isn't implemented yet"),
+                    "html" => panic!("Sorry, html isn't implemented yet"),
+                    x => panic!("Expected argument 3 (format mode) to be one of ['format', 'json', 'js', 'html'], not {}", x)
+                })
+            } else {
+                fail()
+            };
+
             let content = content.trim();
             let content = String::from(content);
             // print the most program-readable stuff
@@ -255,17 +303,23 @@ fn main() {
                 ParseMode::Expression => {
                     println!(
                         "{}",
-                        ParseResult(
-                            expr_parser.parse(&content, true, ParseMetaData::new())
-                        ).to_string()
+                        multi_format(
+                            &ParseResult(
+                                expr_parser.parse(&content, true, ParseMetaData::new())
+                            ),
+                            &expr_fmt
+                        )
                     );
                 },
                 ParseMode::Statement => {
                     println!(
                         "{}",
-                        ParseResult(
-                            stmt_parser.parse(&content, true, ParseMetaData::new())
-                        ).to_string()
+                        multi_format(
+                            &ParseResult(
+                                stmt_parser.parse(&content, true, ParseMetaData::new())
+                            ),
+                            &stmt_fmt
+                        )
                     );
                 },
                 ParseMode::Program => {
@@ -276,6 +330,21 @@ fn main() {
     }
 }
 
+fn multi_format<E: Hash + Eq, F: Fn(&E) -> String>(parsed: &ParseResult<E>, fmtr: &F) -> String {
+    match &parsed.0 {
+        Ok(ps) => {
+            let mut root = String::new();
+            for (e, _used) in ps {
+                root = root + &fmtr(e) + "\n";
+            }
+            root
+        },
+        Err(e) => {
+            format!("{:?}", e)
+        }
+    }
+}
+
 fn fail() -> ! {
-    panic!("Expected 2 arguments: <i|e> <expr|stmt|prgm> <content>")
+    panic!("Expected 4 arguments: <i|e> <expr|stmt|prgm> <json|default|js|...> <content>")
 }

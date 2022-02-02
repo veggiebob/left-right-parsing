@@ -1,10 +1,14 @@
+use std::borrow::Borrow;
 use std::fmt::{Display, Formatter};
+use std::ops::Add;
 use crate::{Expr, Statement};
+use crate::lang_obj::Program;
 
 pub trait Format<E> {
     fn format(&self, ast: &E) -> Text<Self> where Self: Sized;
 }
 
+#[derive(Clone, Copy)]
 pub struct JSON {
     pub pretty: bool
 }
@@ -107,6 +111,16 @@ impl Format<Statement> for JSON {
     }
 }
 
+impl Format<Program> for JSON {
+    fn format(&self, ast: &Program) -> Text<Self> where Self: Sized {
+        let content: Vec<_> = ast.content.iter().map(|stmt| self.format(stmt)).collect();
+        Text {
+            content: self.from_vec(content).content,
+            gen: &self
+        }
+    }
+}
+
 impl JSON {
     pub fn new(pretty: bool) -> JSON {
         JSON {
@@ -146,3 +160,33 @@ impl<T> Display for Text<'_, T> {
         write!(f, "{}", self.content)
     }
 }
+
+impl<'a, T> Add<Text<'a, T>> for Text<'a, T> {
+    type Output = Text<'a, T>;
+
+    fn add(self, rhs: Text<'a, T>) -> Self::Output {
+        Text {
+            content: self.content + &*rhs.content,
+            gen: self.gen
+        }
+    }
+}
+
+impl<'a, T> Add<&'a str> for Text<'a, T> {
+    type Output = Text<'a, T>;
+
+    fn add(self, rhs: &str) -> Self::Output {
+        Text {
+            content: self.content + rhs,
+            gen: self.gen
+        }
+    }
+}
+
+// impl<'a, E, T: Format<E>> Add<E> for Text<'a, T> {
+//     type Output = Text<'a, T>;
+//
+//     fn add(self, rhs: E) -> Self::Output {
+//         self + self.gen.format(rhs)
+//     }
+// }
