@@ -107,7 +107,7 @@ impl<T: Hash + Eq + Clone> ParseResult<T> {
                                         |rs|
                                             rs.into_iter()
                                                 .map(|(s, used2)| (s, used1 + used2))
-                                                .filter(|(s, used)| !consume || *used == content.len())
+                                                .filter(|(s, used)| !consume || *used >= content.len())
                                                 .map(|(s, used)| (constructor(e.clone(), s), used))
                                                 .collect::<Vec<(R, usize)>>()
                                     )

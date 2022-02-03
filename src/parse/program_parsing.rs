@@ -28,9 +28,7 @@ impl Parser for ProgramParser {
         } else {
             if let Ok(hs) = &base.0 {
                 for (vec, used) in hs {
-                    if !consume || *used == content.len() {
-                        finalized.insert((vec.clone(), *used));
-                    }
+                    finalized.insert((vec.clone(), *used));
                 }
             }
         }
