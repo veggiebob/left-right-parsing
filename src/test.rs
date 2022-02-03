@@ -1851,8 +1851,7 @@ pub fn test_program_validation() {
         }
     };
 
-    // let r = \"hello\" f[t:r]=>iftf t+1elser-1
-    let prgm1 = eval("f[x:t, z:t] => x * y where { let y = x * x }");
+    let prgm1 = eval("f[x:t, z:t] => z * z where { let y = x * x }");
     for r in validate(prgm1) {
         println!("{}", r.to_string());
     }

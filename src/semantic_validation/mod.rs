@@ -87,7 +87,7 @@ impl Validator<Program> for ProgramValidator {
 impl Validator<Statement> for StatementValidator {
     fn validate(&self, structure: &Statement) -> Result<(), String> {
         if let Statement::Let(ident, expr) = structure {
-            let expr_validator = ExpressionValidator(self.0.new_with(hashset![ident.clone()]));
+            let expr_validator = ExpressionValidator(self.0.transfer_with(hashset![ident.clone()]));
             expr_validator.validate(expr)
         } else if let Statement::FnDef(name, args, expr, wheres) = structure {
             let mut new_f_idents: HashSet<Identifier> = args.iter().map(|(ident, _type)| ident.clone()).collect();
