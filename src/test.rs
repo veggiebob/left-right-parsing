@@ -108,6 +108,43 @@ fn test_0_depth_parser() {
 }
 
 #[test]
+fn identifier_parse() {
+    const INFIX_ADDITION_SYMBOL: &str = "+"; // for expressions, like "+" in "3 + 4"
+    const INFIX_MULTIPLICATION_SYMBOL: &str = "*"; // for expressions like "*" in "3 * 4"
+    const INFIX_SUBTRACTION_SYMBOL: &str = "-"; // for expressions like "-" in "4 - 3"
+    const INFIX_FUNCTION_SYMBOL: &str = " "; // for expressions like "$" in "func $ [arg]"
+    const INFIX_EQUALITY_SYMBOL: &str = "="; // for checking equality; for expressions like "=" in "x = y"
+    const LIST_SEPARATOR_SYMBOL: char = ','; // for list expressions, like ',' in "[1, 2, 3]"
+    const IDENTIFIER_ALLOWED_CHARS: &str = "_"; // also, by default, includes a-zA-Z
+    const FUNCTION_ARGUMENT_SEPARATOR: char = ','; // seems simple
+    const FUNCTION_ARGUMENT_INFIX_SYMBOL: &str = ":"; // like ":" in "func_name[arg1: type1, arg2: type2] => ..."
+
+    ////////////////////////////////////////////////////
+    // first, assemble only the finest expression parser
+    ////////////////////////////////////////////////////
+
+    // primitive parsers
+    let string_parser = Rc::new(box_expr_parser!(StringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+    let var_parser = Rc::new(box_expr_parser!(VariableParser::default(IdentifierParser::new(IDENTIFIER_ALLOWED_CHARS))));
+
+    // start off with a couple simple parsers
+    let root_parsers = RefCell::new(vec![
+        &string_parser,
+        &nat_parser,
+        &var_parser
+    ].into_iter().map(Rc::downgrade).collect());
+
+    // create the expression parser
+    let expr_parser = Rc::new(ExprParser {
+        parsers: root_parsers
+    });
+
+    let test = "abc".to_string();
+    assert_eq!(expr_parser.parse(&test, true, ParseMetaData::new()).unwrap(), hashset![(Variable(Identifier::Unit("abc".into())), 3)]);
+}
+
+#[test]
 fn test_infix_parse_1() {
     // first make our expression parser
     let string_parser = Rc::new(box_expr_parser!(StringParser()));
@@ -1622,10 +1659,14 @@ fn test_program_parsing() {
     /////////////////////////////////////////////////////////////////
 
     // let test = "f[x:t]=>f x g[y:t] => y + \"hello\" + 3".to_string();
+    // todo: if the to_string method changes, come change this assertion ig
     let test = "f[x:t]=>f+x ".to_string();
-    println!("{}", ParseResult(
-        program_parser.parse(&test, false, ParseMetaData::new())
-    ).to_string());
+    assert_eq!({
+                   let (prgm, _used) = ParseResult(
+                       program_parser.parse(&test, true, ParseMetaData::new())
+                   ).0.unwrap().into_iter().next().unwrap();
+                    prgm.content.get(0).unwrap().to_string()
+               }, "function f (x: t) => (f + x)");
 }
 
 #[test]
@@ -1774,7 +1815,19 @@ pub fn test_program_validation() {
     let eval = |s: &str| {
         let s = format!("{} ", s);
         // figure out how to get consume to be true
-        program_parser.parse(&s, true, ParseMetaData::new()).unwrap()
+        let res = program_parser.parse(&s, true, ParseMetaData::new());
+        if res.is_err() {
+            let no_consume = program_parser.parse(&s, false, ParseMetaData::new());
+            println!("Length of string: {}", s.len());
+            println!("Without consuming, it would have produced: {:?}",
+                     no_consume.map(|hs|hs.into_iter().map(
+                         |(p,u)|
+                             format!("\n{}\t\t{}", p.to_string(), u)
+                     ).collect::<Vec<_>>()));
+            panic!(res)
+        } else {
+            res.unwrap()
+        }
     };
 
     let validate = |p: HashSet<(Program, usize)>| {
@@ -1787,7 +1840,6 @@ pub fn test_program_validation() {
                     Ok(_) => true,
                     Err(e) => {
                         errors += &*format!("Removed {} because {}\n", program.to_string(), e);
-
                         false
                     }
                 }

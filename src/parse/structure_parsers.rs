@@ -86,14 +86,23 @@ impl Parser for IdentifierParser {
 
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
         let ident = take_while(content, |c| c.is_alphabetic() || self.allowed_characters.contains(c)).0;
-        if consume && ident.len() < content.len() {
-            Err(
-                format!("<<{}>> did not consume all that it was supposed to.", ident).into()
-            )
-        } else if ident.len() == 0 {
-            Err(
+        if ident.len() == 0 {
+            return Err(
                 format!("Expected to start with a-z, A-Z, or one of {:?}", self.allowed_characters).into()
             )
+        }
+        if consume {
+            if ident.len() < content.len() {
+                Err(
+                    format!("<<{}>> did not consume all that it was supposed to.", ident).into()
+                )
+            } else {
+                Ok(
+                    hashset![
+                        (Identifier::Unit(ident.clone()), content.len())
+                    ]
+                )
+            }
         } else {
             Ok({
                 let mut possibilities = hashset![
@@ -116,6 +125,7 @@ impl Parser for VariableParser {
 
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
         ParseResult(self.id_parser.parse(content, consume, context))
+            // filter out excluded keywords
             .0.and_then(|hs| {
                 let rest: HashSet<_> = hs.into_iter().filter_map(
                     |(e, used)| {
