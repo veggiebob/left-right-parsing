@@ -47,6 +47,11 @@ impl<T: Hash + Eq> ParseResult<T> {
             Err(_err) => 0
         }
     }
+    pub fn filter_inner<F: Fn(&(T, usize)) -> bool>(self, f: F) -> Self {
+        ParseResult(self.0.map(|hs| hs.into_iter().filter(|e|
+            f(e)
+        ).collect()))
+    }
 }
 
 impl<T: ToString + Hash + Eq + Clone> ToString for ParseResult<T> {
@@ -716,7 +721,7 @@ impl Parser for TakeWhileParser {
         }
         match &self.amount {
             &LengthQualifier::Exactly(x) => {
-                if consume && x != content.len() {
+                if consume && x < content.len() {
                     Err(format!("Tried to consume but the exact amount required, {}, was not the \
                     length of the string. (bozo)", x).into())
                 } else if max_possible.len() >= x {

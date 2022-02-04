@@ -1824,6 +1824,7 @@ pub fn test_program_validation() {
                          |(p,u)|
                              format!("\n{}\t\t{}", p.to_string(), u)
                      ).collect::<Vec<_>>()));
+            println!("error: {:?}", res);
             panic!(res)
         } else {
             res.unwrap()
@@ -1853,6 +1854,11 @@ pub fn test_program_validation() {
 
     let prgm1 = eval("f[x:t, z:t] => z * z where { let y = x * x }");
     for r in validate(prgm1) {
+        println!("{}", r.to_string());
+    }
+
+    let prgm2 = eval("let y = 5\nlet x = y");
+    for r in validate(prgm2) {
         println!("{}", r.to_string());
     }
 }

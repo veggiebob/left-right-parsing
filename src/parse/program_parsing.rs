@@ -50,9 +50,7 @@ impl Parser for ProgramParser {
             if next.len() > 0 {
                 if let Ok(hs) = &next.0 {
                     for (vec, used) in hs {
-                        if !consume || *used == content.len() {
-                            finalized.insert((vec.clone(), *used));
-                        }
+                        finalized.insert((vec.clone(), *used));
                     }
                 }
             }

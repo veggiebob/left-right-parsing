@@ -7,10 +7,12 @@ use std::io::Write;
 use std::ops::Add;
 use std::process::exit;
 use std::rc::Rc;
+use std::sync::Arc;
 use crate::lang_obj::{Statement, Expr, Program, ParseError};
 use crate::lang_obj::formatting::{Format, JSON, Text};
 use crate::parse::*;
 use crate::parse::structure_parsers::*;
+use crate::program_parsing::ProgramParser;
 
 pub mod parse;
 pub mod lang_obj;
@@ -163,6 +165,10 @@ fn main() {
         Rc::downgrade(&let_parser)
     ]);
 
+    let prgm_parser = ProgramParser {
+        stmt_parser: Arc::new(Rc::clone(&stmt_parser))
+    };
+
     let args: Vec<_> = std::env::args().collect();
 
     enum ParseMode {
@@ -216,15 +222,26 @@ fn main() {
             match parse_mode {
                 ParseMode::Expression => println!("Input an expression."),
                 ParseMode::Statement => println!("Input a statement."),
-                ParseMode::Program => panic!("Programs not implemented yet! Sorry!")
+                ParseMode::Program => println!("Input a program. Enter 'eval' to do an evaluation.")
             }
             println!("Enter `:q` to leave.");
+            let mut obj = String::new();
             loop {
                 print!("> ");
                 std::io::stdout().flush().unwrap(); // display >
-                let obj = input().trim().to_string(); // strip off extra space at beginning or end (parser is sensitive about that)
+                let input_line = input().trim().to_string(); // strip off extra space at beginning or end (parser is sensitive about that)
                 if obj == ":q".to_string() {
                     break;
+                }
+                if let ParseMode::Program = parse_mode {
+                    if input_line.as_str() != "eval" {
+                        obj += &*(input_line + "\n");
+                        continue;
+                    } else {
+                        println!("evaluating >{}<", obj);
+                    }
+                } else {
+                    obj = input_line;
                 }
                 // if anything, print the most user-friendly part here
                 match parse_mode {
@@ -245,7 +262,12 @@ fn main() {
                         );
                     },
                     ParseMode::Program => {
-                        panic!("Program parse mode still in progress!");
+                        println!(
+                            "{}",
+                            ParseResult(
+                                prgm_parser.parse(&obj, true, ParseMetaData::new())
+                            ).to_string()
+                        );
                     }
                 }
             }
@@ -323,7 +345,15 @@ fn main() {
                     );
                 },
                 ParseMode::Program => {
-                    panic!("Program parse mode still in progress!");
+                    println!(
+                        "{}",
+                        multi_format(
+                            &ParseResult(
+                                prgm_parser.parse(&content, true, ParseMetaData::new())
+                            ),
+                            &prgm_fmt
+                        )
+                    );
                 }
             }
         }
