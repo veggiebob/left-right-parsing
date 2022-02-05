@@ -78,6 +78,8 @@ impl Validator<Program> for ProgramValidator {
             if let Statement::Let(ident, _expr) = s {
                 scope_frame.add_global(ident.clone()).unwrap();
             }
+        }
+        for s in structure.content.iter() {
             StatementValidator(scope_frame.new_with(hashset![])).validate(s)?;
         }
         Ok(())
