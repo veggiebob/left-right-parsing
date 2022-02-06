@@ -9,7 +9,7 @@ use std::process::exit;
 use std::rc::Rc;
 use std::sync::Arc;
 use crate::lang_obj::{Expr, ParseError, Program, Statement};
-use crate::lang_obj::formatting::{Format, JSON, Text};
+use crate::lang_obj::formatting::{Format, HTML, JSON, Style, Text};
 use crate::parse::*;
 use crate::parse::structure_parsers::*;
 use crate::program_parsing::ProgramParser;
@@ -178,6 +178,12 @@ fn run_main_program(prgm_parser: ProgramParser, stmt_parser: Rc<StatementParser>
         },
         RunMode::Evaluation(content) => {
             let json_fmt = JSON::new(true);
+            let html_fmt_o = HTML {
+                style: Style {
+                    color_wheel: vec![]
+                }
+            };
+            let html_fmt = html_fmt_o.clone();
 
             type Formatter<T> = Box<dyn Fn(&T) -> String>;
 
@@ -188,33 +194,35 @@ fn run_main_program(prgm_parser: ProgramParser, stmt_parser: Rc<StatementParser>
                     "debug" => Box::new(|x: &Expr| x.to_string()) as Formatter<Expr>,
                     "json" => Box::new(move |x: &Expr| json_fmt.format(x).content) as Formatter<Expr>,
                     "js" => panic!("Sorry, js isn't implemented yet"),
-                    "html" => panic!("Sorry, html isn't implemented yet"),
+                    "html" => Box::new(move |x: &Expr| html_fmt.clone().format(x).content) as Formatter<Expr>,
                     x => panic!("Expected argument 3 (format mode) to be one of ['format', 'json', 'js', 'html'], not {}", x)
                 })
             } else {
                 fail()
             };
 
+            let html_fmt = html_fmt_o.clone();
             let stmt_fmt: Formatter<Statement> = if args.len() > 3 {
                 let arg = args.get(3).unwrap();
                 (match arg.as_str() {
                     "debug" => Box::new(|x: &Statement| x.to_string()) as Formatter<Statement>,
                     "json" => Box::new(move |x: &Statement| json_fmt.format(x).content) as Formatter<Statement>,
                     "js" => panic!("Sorry, js isn't implemented yet"),
-                    "html" => panic!("Sorry, html isn't implemented yet"),
+                    "html" => Box::new(move |x: &Statement| html_fmt.format(x).content) as Formatter<Statement>,
                     x => panic!("Expected argument 3 (format mode) to be one of ['format', 'json', 'js', 'html'], not {}", x)
                 })
             } else {
                 fail()
             };
 
+            let html_fmt = html_fmt_o.clone();
             let prgm_fmt = if args.len() > 3 {
                 let arg = args.get(3).unwrap();
                 (match arg.as_str() {
                     "debug" => Box::new(|x: &Program| x.to_string()) as Formatter<Program>,
                     "json" => Box::new(move |x: &Program| json_fmt.format(x).content) as Formatter<Program>,
                     "js" => panic!("Sorry, js isn't implemented yet"),
-                    "html" => panic!("Sorry, html isn't implemented yet"),
+                    "html" => Box::new(move |x: &Program| html_fmt.format(x).content) as Formatter<Program>,
                     x => panic!("Expected argument 3 (format mode) to be one of ['format', 'json', 'js', 'html'], not {}", x)
                 })
             } else {

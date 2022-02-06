@@ -2,7 +2,7 @@ use std::borrow::Borrow;
 use std::fmt::{Display, Formatter};
 use std::ops::Add;
 use crate::{Expr, Statement};
-use crate::lang_obj::Program;
+use crate::lang_obj::{Identifier, LONat, LOString, Program};
 
 pub trait Format<E> {
     fn format(&self, ast: &E) -> Text<Self> where Self: Sized;
@@ -13,11 +13,25 @@ pub struct JSON {
     pub pretty: bool
 }
 
-struct XML {
+pub struct XML {
     pub pretty: bool
 }
+
+/// The point of this formatter is to make something
+/// visually appealing with colors! and style!
+#[derive(Clone)]
+pub struct HTML {
+    pub style: Style
+}
+
 struct JavaScript;
 struct Haskell;
+
+type Color = (u8, u8, u8);
+#[derive(Clone)]
+pub struct Style {
+    pub color_wheel: Vec<Color>
+}
 
 #[derive(Debug)]
 pub struct Text<'a, T: Sized> {
@@ -27,6 +41,137 @@ pub struct Text<'a, T: Sized> {
 
 fn quote(content: String) -> String {
     "\"".to_string() + &content + "\""
+}
+
+fn html_color(content: &str, color: &str) -> String {
+    format!("<span style=\"color:{}\">{}</span>", color, content)
+}
+
+impl Format<LOString> for HTML {
+    fn format(&self, ast: &LOString) -> Text<Self> where Self: Sized {
+        Text {
+            content: format!("<span style=\"color:#0c0\">\"{}\"</span>", ast.content),
+            gen: &self
+        }
+    }
+}
+
+impl Format<LONat> for HTML {
+    fn format(&self, ast: &LONat) -> Text<Self> where Self: Sized {
+        Text {
+            content: format!("<span style=\"color:#00c\">{}</span>", ast.content),
+            gen: &self
+        }
+    }
+}
+
+impl Format<Identifier> for HTML {
+    fn format(&self, ast: &Identifier) -> Text<Self> where Self: Sized {
+        Text {
+            content: format!("<span style=\"color:#f80\">{}</span>", ast.to_string()),
+            gen: &self
+        }
+    }
+}
+
+impl Format<Expr> for HTML {
+    fn format(&self, ast: &Expr) -> Text<Self> where Self: Sized {
+        // ignoring style, for now
+        let content = format!(
+            "<span style=\"outline: 1px solid #ccc\">{}</span>",
+            match ast {
+                Expr::Nat(x) => self.format(x),
+                Expr::Str(s) => self.format(s),
+                Expr::Infix(left, s, right) => {
+                    Text {
+                        content: format!("{} {} {}", self.format(left.as_ref()), s, self.format(right.as_ref())),
+                        gen: self
+                    }
+                },
+                Expr::List(es) => {
+                    Text {
+                        content:
+                            format!(
+                                "{}{}{}",
+                                html_color("[", "grey"),
+                                es.into_iter()
+                                    .map(|f| self.format(f.as_ref()))
+                                    .fold(String::new(), |s, e| s + ", " + &*e.content),
+                                html_color("[", "grey")
+                            ),
+                        gen: self
+                    }
+                },
+                Expr::Func(_, _) => {
+                    // aaaaa why is this here
+                    todo!("Welp, this is not implemented")
+                }
+                Expr::Variable(ident) => self.format(ident),
+                Expr::Conditional(cond, then, then_else) => {
+                    Text {
+                        content: format!(
+                            "if {} {} {} {} {} {}",
+                            self.format(cond.as_ref()),
+                            "{",
+                            self.format(then.as_ref()),
+                            "} else {",
+                            self.format(then_else.as_ref()),
+                            "}"
+                        ),
+                        gen: self
+                    }
+                }
+            }
+        );
+
+        Text {
+            content,
+            gen: &self
+        }
+    }
+}
+
+impl Format<Statement> for HTML {
+    fn format(&self, ast: &Statement) -> Text<Self> where Self: Sized {
+        Text {
+            content: match ast {
+                Statement::Let(ident, expr) => {
+                    format!(
+                        "<span style=\"color:orange\">let</span> {} = {};",
+                        self.format(ident),
+                        self.format(expr)
+                    )
+                },
+                Statement::FnDef(name, args, body, wheres) => {
+                    format!(
+                        "{} {} = ({}) => {} where {} {} {}",
+                        html_color("let", "orange"),
+                        name,
+                        args.into_iter()
+                            .map(|(ident, i_type)| {
+                                self.format(ident).content + &*html_color(&i_type, "blue")
+                            })
+                            .fold(String::new(), |g, e| {
+                                g + &*e
+                            }),
+                        self.format(body),
+                        "{",
+                        wheres.iter()
+                            .map(|e| self.format(e))
+                            .fold(String::new(), |g, e| g + &*e.content),
+                        "}"
+                    )
+                }
+            },
+            gen: &self
+        }
+    }
+}
+
+impl Format<Program> for HTML {
+    fn format(&self, ast: &Program) -> Text<Self> where Self: Sized {
+        todo!()
+    }
 }
 
 impl Format<Expr> for JSON {
