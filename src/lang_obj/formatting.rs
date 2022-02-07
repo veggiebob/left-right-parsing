@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::fmt::{Display, Formatter};
 use std::ops::Add;
 use crate::{Expr, Statement};
@@ -30,7 +29,7 @@ struct Haskell;
 type Color = (u8, u8, u8);
 #[derive(Clone)]
 pub struct Style {
-    pub color_wheel: Vec<Color>
+    pub color_wheel: Vec<Color> 
 }
 
 #[derive(Debug)]
@@ -59,7 +58,8 @@ impl Format<LOString> for HTML {
 impl Format<LONat> for HTML {
     fn format(&self, ast: &LONat) -> Text<Self> where Self: Sized {
         Text {
-            content: format!("<span style=\"color:#00c\">{}</span>", ast.content),
+            // color the text light blue
+            content: html_color(ast.content.to_string().as_str(), "#aff"),
             gen: &self
         }
     }
@@ -68,7 +68,7 @@ impl Format<LONat> for HTML {
 impl Format<Identifier> for HTML {
     fn format(&self, ast: &Identifier) -> Text<Self> where Self: Sized {
         Text {
-            content: format!("<span style=\"color:#f80\">{}</span>", ast.to_string()),
+            content: html_color(ast.to_string().as_str(), "#ccf"),
             gen: &self
         }
     }
@@ -78,13 +78,13 @@ impl Format<Expr> for HTML {
     fn format(&self, ast: &Expr) -> Text<Self> where Self: Sized {
         // ignoring style, for now
         let content = format!(
-            "<span style=\"outline: 1px solid #ccc\">{}</span>",
+            "{}",
             match ast {
                 Expr::Nat(x) => self.format(x),
                 Expr::Str(s) => self.format(s),
                 Expr::Infix(left, s, right) => {
                     Text {
-                        content: format!("{} {} {}", self.format(left.as_ref()), s, self.format(right.as_ref())),
+                        content: format!("({} {} {})", self.format(left.as_ref()), s, self.format(right.as_ref())),
                         gen: self
                     }
                 },
@@ -96,8 +96,10 @@ impl Format<Expr> for HTML {
                                 html_color("[", "grey"),
                                 es.into_iter()
                                     .map(|f| self.format(f.as_ref()))
-                                    .fold(String::new(), |s, e| s + ", " + &*e.content),
-                                html_color("[", "grey")
+                                    .map(|t| t.content)
+                                    .collect::<Vec<_>>()
+                                    .join(", "),
+                                html_color("]", "grey")
                             ),
                         gen: self
                     }
@@ -110,11 +112,14 @@ impl Format<Expr> for HTML {
                 Expr::Conditional(cond, then, then_else) => {
                     Text {
                         content: format!(
-                            "if {} {} {} {} {} {}",
+                            "{} {} {} {} {} {} {} {} {}",
+                            html_color("if", "orange"),
                             self.format(cond.as_ref()),
                             "{",
                             self.format(then.as_ref()),
-                            "} else {",
+                            "}",
+                            html_color("else", "orange"),
+                            "{",
                             self.format(then_else.as_ref()),
                             "}"
                         ),
@@ -144,22 +149,24 @@ impl Format<Statement> for HTML {
                 },
                 Statement::FnDef(name, args, body, wheres) => {
                     format!(
-                        "{} {} = ({}) => {} where {} {} {}",
+                        "{} {} = ({}) => {} {} {} {} {}",
                         html_color("let", "orange"),
                         name,
                         args.into_iter()
                             .map(|(ident, i_type)| {
-                                self.format(ident).content + &*html_color(&i_type, "blue")
+                                format!("{} {}", html_color(&i_type, "#ff0"), &self.format(ident).content)
                             })
-                            .fold(String::new(), |g, e| {
-                                g + &*e
-                            }),
+                            .collect::<Vec<_>>()
+                            .join(", "),
                         self.format(body),
-                        "{",
+                        html_color("where", "orange"),
+                        html_color("{", "grey"),
                         wheres.iter()
                             .map(|e| self.format(e))
-                            .fold(String::new(), |g, e| g + &*e.content),
-                        "}"
+                            .map(|t| t.content)
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                        html_color("}", "grey")
                     )
                 }
             },
@@ -327,6 +334,17 @@ impl<'a, T> Add<&'a str> for Text<'a, T> {
         }
     }
 }
+
+// impl<T> Join<String> for Vec<Text<'_, T>> {
+//     type Output = Text<'_, T>;
+
+//     fn join(self, sep: String) -> Self::Output {
+//         Text {
+//             content: self.into_iter().map(|x| x.content.as_str()).collect::<Vec<_>>().join(sep),
+//             gen: self.gen
+//         }
+//     }
+// }
 
 // impl<'a, E, T: Format<E>> Add<E> for Text<'a, T> {
 //     type Output = Text<'a, T>;
