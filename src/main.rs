@@ -257,8 +257,8 @@ fn run_main_program(prgm_parser: ProgramParser, stmt_parser: Rc<StatementParser>
                     );
                 },
                 ParseMode::Program => {
-                    println!("prgm mode not stable yet!");
-                    let res = parse_validate_program(&content);
+                    // program mode is special and needs an extra space for some reason? oh well
+                    let res = parse_validate_program(&format!("{} ", &content));
                     println!(
                         "{}",
                         multi_format(

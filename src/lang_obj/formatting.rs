@@ -177,7 +177,17 @@ impl Format<Statement> for HTML {
 
 impl Format<Program> for HTML {
     fn format(&self, ast: &Program) -> Text<Self> where Self: Sized {
-        todo!()
+        Text {
+            content: format!(
+                "<div style=\"margin:3px;color:white;background-color:#555;padding:10px;float:left;border-radius:5px\">{}</div>",
+                ast.content.iter()
+                    .map(|x| self.format(x))
+                    .map(|s| format!("&ensp;{}", s))
+                    .collect::<Vec<_>>()
+                    .join("<br>")
+            ),
+            gen: self
+        }
     }
 }
 
