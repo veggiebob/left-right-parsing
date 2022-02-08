@@ -1,6 +1,7 @@
-### Demo
+### Interactive Demo
 
-Run `cargo run`.
+Run `cargo run i expr` for Expression mode, or `cargo run i stmt` for Statement mode, or the same with `prgm` for program mode.
+Note: Program mode performs semantic validation, so identifiers that are not defined are considered invalid.
 
 Try inputting some examples and observe the AST output:
 
