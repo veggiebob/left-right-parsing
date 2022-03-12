@@ -77,6 +77,8 @@ impl Validator<Program> for ProgramValidator {
             // this is a special case, mostly we just want to validate
             if let Statement::Let(ident, _expr) = s {
                 scope_frame.add_global(ident.clone()).unwrap();
+            } else if let Statement::FnDef(name, _, _, _) = s {
+                scope_frame.add_global(Identifier::Unit(name.clone())).unwrap();
             }
         }
         for s in structure.content.iter() {
