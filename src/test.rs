@@ -82,6 +82,25 @@ fn parse_str_nat() {
 }
 
 #[test]
+fn me_reminding_myself_about_everything() {
+    let nat_parser = NatParser();
+    let string_parser = StringParser();
+    let content = String::from("1234\"hi\"");
+    let result1 = ParseResult(nat_parser.parse(&content, false, ParseMetaData::new()));
+    println!("{:?}", result1);
+    let res = result1.chain(
+        &content,
+        true,
+        ParseMetaData::new(),
+        chainable(|num, str, meta| {
+            string_parser.parse(&str, true, meta)
+        }),
+        |a, b| (a, b));
+
+    println!("{:?}", res);
+}
+
+#[test]
 fn test_0_depth_parser() {
 
     // first make our expression parser

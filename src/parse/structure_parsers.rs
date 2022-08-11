@@ -349,6 +349,7 @@ impl Parser for FnDefParser {
                     // first, check if we can finish off any
                     let end_statement = ParseResult(Ok(where_statements.clone()))
                         .parse_static_text(&content, false, context, "}");
+
                     end_statement.0.map(|hs| {
                         hs.into_iter().for_each(|x| {
                             finalized.insert(x);

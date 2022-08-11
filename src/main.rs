@@ -15,10 +15,12 @@ use crate::parse::structure_parsers::*;
 use crate::program_parsing::ProgramParser;
 use crate::semantic_validation::{ProgramValidator, Validator};
 
+pub mod ez_parse;
 pub mod parse;
 pub mod lang_obj;
 pub mod funcs;
 pub mod semantic_validation;
+pub mod interpret;
 
 #[cfg(test)]
 pub mod test;
