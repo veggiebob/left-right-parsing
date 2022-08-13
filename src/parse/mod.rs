@@ -3,9 +3,11 @@ use std::cmp::min;
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::iter::TakeWhile;
+use std::ops::Add;
 use std::process::Output;
 use std::rc::{Rc, Weak};
 use std::task::Context;
+use crate::ez_parse::funcs::{CatParser, concat};
 
 use crate::funcs::{char_at, expect_str, take, take_while};
 use crate::lang_obj::{Expr, LONat, LOString, ParseError};

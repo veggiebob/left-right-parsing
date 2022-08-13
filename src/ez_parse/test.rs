@@ -1,5 +1,6 @@
 use crate::ez_parse::funcs::*;
 use crate::{Expr, NatParser, ParseMetaData, Parser, StringParser};
+use crate::ez_parse::ops::EZ;
 use crate::lang_obj::{LONat, LOString};
 
 // these tests work, just make them assert the results
@@ -32,4 +33,14 @@ fn enclose_test1() {
     let res = e.parse(&source, true, ParseMetaData::new());
     // println!("{:?}", res);
     assert_eq!(res, Ok(hashset!{(Expr::Nat(LONat::from(1234)), 6)}));
+}
+
+#[test]
+fn ez_add_parsers() {
+    let source = String::from("1234\"abcd\"");
+    let p1 = NatParser();
+    let p2 = StringParser();
+    let p = EZ(p1) + EZ(p2);
+    let res = p.parse(&source, true, ParseMetaData::new());
+    println!("{:?}", res);
 }

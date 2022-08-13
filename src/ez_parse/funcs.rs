@@ -2,6 +2,7 @@
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::ops::Add;
 use crate::parse::{Parser, ParseResult};
 use crate::{chainable, ParseError, ParseMetaData};
 use crate::funcs::expect_str;
@@ -94,3 +95,4 @@ pub fn enclose_with<P, O>(parser: P, left: &String, right: &String) -> impl Pars
     );
     whole_parser
 }
+
