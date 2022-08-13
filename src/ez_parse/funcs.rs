@@ -15,7 +15,10 @@ use crate::funcs::expect_str;
 /// branching mechanisms or anything; it's mostly for convenience.
 /// p1 and p2 are obvious, joiner is the function that operates on the outputs
 /// of the two parsers.
-pub struct CatParser<P1: Parser<Output=I1>, P2: Parser<Output=I2>, I1, I2, J> {
+pub struct CatParser<P1, P2, J>
+where
+    P1: Parser,
+    P2: Parser {
     pub p1: P1,
     pub p2: P2,
     pub joiner: Box<J>
@@ -35,7 +38,7 @@ impl SimpleStrParser {
     }
 }
 
-impl<P1: Parser<Output=I1>, P2: Parser<Output=I2>, I1: Hash + Eq + Clone, I2: Hash + Eq + Clone, O: Hash + Eq, J: Fn(I1, I2) -> O> Parser for CatParser<P1, P2, I1, I2, J> {
+impl<P1: Parser<Output=I1>, P2: Parser<Output=I2>, I1: Hash + Eq + Clone, I2: Hash + Eq + Clone, O: Hash + Eq, J: Fn(I1, I2) -> O> Parser for CatParser<P1, P2, J> {
     type Output = O;
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
         let pr = ParseResult(self.p1.parse(content, false, context));
@@ -65,10 +68,11 @@ impl Parser for SimpleStrParser {
 }
 
 /// Concatenate two parsers, with a joiner `j`.
-pub fn concat<P1, P2, I1, I2, O, J>(p1: P1, p2: P2, j: Box<J>) -> CatParser<P1, P2, I1, I2, J>
-    where P1: Parser<Output=I1>,
-          P2: Parser<Output=I2>,
-          J: Fn(I1, I2) -> O {
+pub fn concat<P1, P2, I1, I2, O, J>(p1: P1, p2: P2, j: Box<J>) -> CatParser<P1, P2, J>
+    where
+        P1: Parser,
+        P2: Parser,
+        J: Fn(I1, I2) -> O {
     CatParser {
         p1,
         p2,
