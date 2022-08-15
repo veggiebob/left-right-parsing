@@ -305,6 +305,13 @@ pub struct ConditionalParser {
 #[derive(Clone, Copy)]
 pub struct ParseMetaData {
     pub depth: u32,
+    /// Represents when the last iteration involved a zero-width parse operation.
+    /// Zero-width parse operations are only allowed once, which forces right-associativity
+    /// for infix operations. A zero-width parse operation occurs if the parse operation
+    /// takes a recursive step before "consuming" any characters.
+    /// Example: Parsing the expression `A + B` (where `A` and `B` are expressions) requires
+    /// that a recursive step be taken immediately, so no characters are consumed. If this
+    /// flag is not in place properly, stack overflow and infinite recursion *will* occur.
     pub was_infix: bool
 }
 
