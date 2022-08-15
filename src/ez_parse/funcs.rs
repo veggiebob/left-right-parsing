@@ -2,6 +2,7 @@
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::rc::Rc;
 use crate::parse::{Parser, ParseResult};
 use crate::{chainable, ParseError, ParseMetaData};
 use crate::funcs::{expect_str, take};
@@ -14,6 +15,7 @@ use crate::funcs::{expect_str, take};
 /// branching mechanisms or anything; it's mostly for convenience.
 /// p1 and p2 are obvious, joiner is the function that operates on the outputs
 /// of the two parsers.
+#[derive(Clone)]
 pub struct CatParser<P1, P2, J>
     where
         P1: Parser,
@@ -23,6 +25,7 @@ pub struct CatParser<P1, P2, J>
     pub joiner: Box<J>
 }
 
+#[derive(Clone)]
 pub struct UnionParser<P1, P2>
     where
         P1: Parser,
@@ -38,16 +41,30 @@ pub struct KleeneParser<P>
     p: P
 }
 
-pub struct OptionalParser<P>
-    where
-        P: Parser {
-    pub p: P
-}
-
-/// Simplest parser that merely determines if the string is the next part
+/// very simple parser that merely determines if the string is the next part
 /// in the source to be parsed. Its return value is usually not useful.
+#[derive(Clone)]
 pub struct SimpleStrParser {
     pub str: String
+}
+
+/// Parses epsilon :)
+#[derive(Clone, Copy)]
+pub struct EpsilonParser;
+
+// impl<P1: Clone + Copy, P2: Clone + Copy, J> Copy for CatParser<P1, P2, J> where Box<J>: Clone + Copy {}
+// impl<P1: Clone, P2: Clone> Copy for UnionParser<P1, P2> {}
+// impl<P: Clone> Copy for KleeneParser<P> {}
+
+impl Parser for EpsilonParser {
+    type Output = ();
+    fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        if consume && content.len() > 0 {
+            Err(ParseError::from("Could not consume string with epsilon parser"))
+        } else {
+            Ok(hashset!{((), 0)})
+        }
+    }
 }
 
 impl SimpleStrParser {
@@ -127,42 +144,21 @@ impl<P1: Parser, P2: Parser> Parser for UnionParser<P1, P2>
     }
 }
 
-impl<P: Parser> Parser for OptionalParser<P>
-    where
-        P::Output: Hash + Eq
-{
-    type Output = Option<P::Output>;
-    fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        // there will never be an error returned
-        let mut all_parses: HashSet<(_, usize)> = hashset!{ (None, 0) };
-        let res = self.p.parse(content, consume, context);
-        match res {
-            Ok(ps) => {
-                let more = ps.into_iter()
-                    .map(|(x, len)| (Some(x), len)).collect::<Vec<_>>();
-                all_parses.extend(more)
-            },
-            Err(e) => {} // ignore
-        };
-        Ok(all_parses)
-    }
-}
-
 impl<P: Parser> Parser for KleeneParser<P>
     where
         P::Output: Hash + Eq + Clone
 {
 
     // Kleene operation: K = e|PK
+    // consume: operates the same, but filters all possibilities where the whole string is not consumed.
 
     type Output = Vec<P::Output>; // can be empty
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        // note that since we don't know how many of these we are using, we don't know when to consume.
 
         let mut all_parses = hashset!{(vec![], 0)};
 
         {
-            let meta = ParseMetaData::new();
+            let meta = context;
             // original parse
             let mut res = ParseResult(self.p.parse(content, false, meta))
                 .map_inner(|x| vec![x]).0;
@@ -199,6 +195,12 @@ impl<P: Parser> Parser for KleeneParser<P>
                 } else {
                     res = Err(ParseError::from("no more possibilities"));
                 }
+            }
+        }
+        if consume {
+            all_parses = all_parses.into_iter().filter(|(_, len)| *len == content.len()).collect();
+            if all_parses.len() == 0 {
+                return Err(ParseError::from("Could not apply Kleene star operation on the rest of string."));
             }
         }
         Ok(all_parses)
@@ -269,6 +271,64 @@ pub fn kleene<P>(p: P) -> KleeneParser<P>
     }
 }
 
+////////////////////////////////////////////////
+// The following are all convenience functions
+////////////////////////////////////////////////
+
+#[derive(Clone)]
+pub struct MappedParser<P, F, T>
+    where
+        P: Parser,
+        F: Fn(P::Output) -> T
+{
+    p: P,
+    f: Box<F>
+}
+
+impl<P, F, T> Parser for MappedParser<P, F, T>
+    where
+        P: Parser,
+        F: Fn(P::Output) -> T,
+        P::Output: Hash + Eq,
+        T: Hash + Eq
+{
+    type Output = T;
+    fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        ParseResult(self.p.parse(content, consume, context)).map_inner(&self.f).0
+    }
+}
+
+pub fn map<P, F, T>(p: P, f: F) -> MappedParser<P, F, T>
+    where
+        P: Parser,
+        F: Fn(P::Output) -> T
+{
+    MappedParser {
+        p,
+        f: Box::new(f)
+    }
+}
+
+type OptionalParser<P: Parser> = MappedParser<UnionParser<P, EpsilonParser>, fn(<UnionParser<P, EpsilonParser> as Parser>::Output) -> Option<P::Output>, Option<P::Output>>;
+
+/// Convenience for union with nothing, or "optional"
+pub fn optional<P>(p: P) -> OptionalParser<P>
+    where
+        P: Parser,
+        P::Output: Hash + Eq + Clone
+{
+    MappedParser {
+        p: UnionParser {
+            p1: p,
+            p2: EpsilonParser
+        },
+        f: Box::new(|m| match m {
+            UnionResult::Left(x) => Some(x),
+            UnionResult::Right(_e) => None
+        })
+    }
+}
+
 /// Creates a parser using an inner parser, and parsing the left and right strings.
 /// This is another convenience function. For example, parse "(123)" with a number parser,
 /// and left="(" and right=")"
@@ -287,5 +347,12 @@ pub fn enclose_with<P, O>(parser: P, left: &String, right: &String) -> impl Pars
         Box::new(|o, right_string| o)
     );
     whole_parser
+}
+
+pub fn fst<U, V>(u: U, _v: V) -> U {
+    u
+}
+pub fn snd<U, V>(_u: U, v: V) -> V {
+    v
 }
 

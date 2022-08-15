@@ -84,6 +84,18 @@ impl<T: ToString + Hash + Eq + Clone> ToString for ParseResult<T> {
     }
 }
 
+impl<T: Hash + Eq> ParseResult<T> {
+    pub fn map_inner<X: Hash + Eq, F: Fn(T) -> X>(self, f: F) -> ParseResult<X> {
+        ParseResult(
+            self.0.map(
+                |hs|
+                    hs.into_iter()
+                        .map(|(e, used)| (f(e), used)).collect()
+            )
+        )
+    }
+}
+
 impl<T: Hash + Eq + Clone> ParseResult<T> {
     /// quick way to combine parses.
     /// if you just do the types, it should be pretty straight forward
@@ -228,16 +240,6 @@ impl<T: Hash + Eq + Clone> ParseResult<T> {
         }
     }
 
-    pub fn map_inner<X: Hash + Eq, F: Fn(T) -> X>(self, f: F) -> ParseResult<X> {
-        ParseResult(
-            self.0.map(
-                |hs|
-                    hs.into_iter()
-                        .map(|(e, used)| (f(e), used)).collect()
-            )
-        )
-    }
-
     pub fn simplified_results(&self) -> Result<HashSet<T>, ParseError> {
         self.0.as_ref()
             .map_err(|e| e.clone())
@@ -271,7 +273,11 @@ macro_rules! box_expr_parser {
 pub struct ExprParser {
     pub parsers: RefCell<Vec<Weak<GenericExprParser>>>
 }
+
+#[derive(Clone, Copy)]
 pub struct StringParser();
+
+#[derive(Clone, Copy)]
 pub struct NatParser();
 pub struct ListParser {
     pub expr_parser: Rc<ExprParser>,
