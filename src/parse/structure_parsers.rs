@@ -155,21 +155,21 @@ impl Parser for LetParser {
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
         let result = expect_with_used(content, "let", "Expected 'let'".into());
         let result = ParseResult(result) // wrap with the result to do some chaining!
-            .parse_some_whitespace(&content, false, context)
+            .parse_some_whitespace(&content, false, context.clone())
             .chain( // parse an identifier
                 &content,
                 false,
-                context.increment_depth(),
+                context.clone().increment_depth(),
                 chainable(|_space, next, meta| {
-                    self.id_parser.parse(&next, false, context)
+                    self.id_parser.parse(&next, false, context.clone())
                 }),
                 |_space, ident| ident
             )
-            .parse_any_whitespace(&content, false, context)
+            .parse_any_whitespace(&content, false, context.clone())
             .chain( // parse an '='
                 &content,
                 false,
-                context,
+                context.clone(),
                 |_ident, next, meta| {
                     expect_str::<ParseError>(&next, "=",
                                              "Expected an '='".into(),
@@ -178,11 +178,11 @@ impl Parser for LetParser {
                 },
                 |ident, _eq| ident
             )
-            .parse_any_whitespace(&content, false, context)
+            .parse_any_whitespace(&content, false, context.clone())
             .chain( // parse the expression! (finally!)
                 &content,
                 false,
-                context,
+                context.clone(),
                 chainable(|_ident, next, meta| {
                     self.expr_parser.parse(&next, consume, meta)
                 }),
@@ -258,16 +258,16 @@ impl Parser for FnDefParser {
      */
     ///
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        let ctx = context.increment_depth();
+        let ctx = context.clone().increment_depth();
 
         // first, parse the identifier
-        let result = self.id_parser.parse(content, false, ctx);
+        let result = self.id_parser.parse(content, false, ctx.clone());
         let root = ParseResult(result)
-            .parse_any_whitespace(&content, false, ctx)
+            .parse_any_whitespace(&content, false, ctx.clone())
             .chain( // then parse the args
                 content,
                 false,
-                ctx,
+                ctx.clone(),
                 chainable(|_ident, next, meta| {
                     self.arg_parser.parse(&next, false, meta.increment_depth())
                 }),
@@ -275,11 +275,11 @@ impl Parser for FnDefParser {
                     (id, args)
                 }
             )
-            .parse_any_whitespace(&content, false, ctx)
+            .parse_any_whitespace(&content, false, ctx.clone())
             .chain( // parse a '=>'
                 &content,
                 false,
-                context,
+                context.clone(),
                 |_ident, next, meta| {
                     expect_str::<ParseError>(&next, "=>",
                                              "Expected an \"=>\"".into(),
@@ -288,11 +288,11 @@ impl Parser for FnDefParser {
                 },
                 |x, _| x
             )
-            .parse_any_whitespace(&content, false, ctx)
+            .parse_any_whitespace(&content, false, ctx.clone())
             .chain( // parse an expression
                 &content,
                 false,
-                context.increment_depth(),
+                context.clone().increment_depth(),
                 chainable(|_p, next, meta| {
                     self.expr_parser.parse(&next, false, meta)
                 }),
@@ -301,11 +301,11 @@ impl Parser for FnDefParser {
 
         // attempt a 'where' on it
         let with_where = root.clone()
-            .parse_any_whitespace(&content, false, ctx)
-            .parse_static_text(&content, false, ctx, "where")
-            .parse_any_whitespace(&content, false, ctx)
-            .parse_static_text(&content, false, ctx, "{")
-            .parse_any_whitespace(&content, false, ctx);
+            .parse_any_whitespace(&content, false, ctx.clone())
+            .parse_static_text(&content, false, ctx.clone(), "where")
+            .parse_any_whitespace(&content, false, ctx.clone())
+            .parse_static_text(&content, false, ctx.clone(), "{")
+            .parse_any_whitespace(&content, false, ctx.clone());
 
         let mut final_set = ParseResult(root.0.map(|hs| hs.into_iter().filter_map(
             |((ident, args, expr), used)| {
@@ -348,7 +348,7 @@ impl Parser for FnDefParser {
 
                     // first, check if we can finish off any
                     let end_statement = ParseResult(Ok(where_statements.clone()))
-                        .parse_static_text(&content, false, context, "}");
+                        .parse_static_text(&content, false, context.clone(), "}");
 
                     end_statement.0.map(|hs| {
                         hs.into_iter().for_each(|x| {
@@ -361,7 +361,7 @@ impl Parser for FnDefParser {
                         .chain(
                             &content,
                             false,
-                            context,
+                            context.clone(),
                             chainable(|_fndef, next, meta| {
                                 self.statement_parser.parse(&next, false, meta.increment_depth())
                             }),
@@ -377,7 +377,7 @@ impl Parser for FnDefParser {
                                     }
                                 }
                             }
-                        ).parse_any_whitespace(&content, false, context);
+                        ).parse_any_whitespace(&content, false, context.clone());
                     where_statements = match next_statement.0 {
                         Ok(stmts) => stmts,
                         Err(e) => hashset![]
@@ -412,7 +412,7 @@ impl Parser for StatementParser {
         let mut num_tried = 0;
         for parser in self.parsers.borrow().iter() {
             if let Some(parser) = parser.upgrade() {
-                match parser.parse(content, consume, context) {
+                match parser.parse(content, consume, context.clone()) {
                     Ok(parses) => {
                         num_tried += 1;
                         for p in parses {

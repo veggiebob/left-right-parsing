@@ -118,22 +118,28 @@ impl<T: Hash + Eq + Clone> ParseResult<T> {
                 |ps| {
                     let ps: HashSet<(R, usize)> = ps.into_iter().filter_map(
                         |(e, used1)| {
-                            if used1 >= content.len() {
-                                None // expected more to be parsed!
-                            } else {
+                            // if used1 >= content.len() {
+                            //     Err(ParseError::from("")) // expected more to be parsed!
+                            // epsilon parser!
+                            // } else {
+                                // take the rest of the string (after one of the previous parse results)
                                 if let Some((_, rest)) = take(content, used1) {
-                                    parse_func(&e, rest, context).map(
+                                    // calculate the possibilities based on this parse
+                                    parse_func(&e, rest, context.clone()).map( // if there are any
                                         |rs|
                                             rs.into_iter()
+                                                // add the usages together
                                                 .map(|(s, used2)| (s, used1 + used2))
+                                                // filter out the ones that don't consume everything if they were supposed to
                                                 .filter(|(s, used)| !consume || *used >= content.len())
+                                                // add the two parse results together with function
                                                 .map(|(s, used)| (constructor(e.clone(), s), used))
                                                 .collect::<Vec<(R, usize)>>()
                                     )
                                 } else {
                                     None // for some reason there were not enough characters left
                                 }
-                            }
+                            // }
                         }
                     )
                         .flatten()
@@ -153,9 +159,9 @@ impl<T: Hash + Eq + Clone> ParseResult<T> {
         self.chain( // parse any amount of space (including 0)
             content,
             consume,
-            context,
+            context.clone(),
             chainable(|_x, next, meta| {
-                any_whitespace.parse(&next, consume, context)
+                any_whitespace.parse(&next, consume, context.clone())
             }),
             |x, _| x
         )
@@ -166,9 +172,9 @@ impl<T: Hash + Eq + Clone> ParseResult<T> {
         self.chain( // parse any amount of space (including 0)
             content,
             consume,
-            context,
+            context.clone(),
             chainable(|_x, next, meta| {
-                some_whitespace.parse(&next, consume, context)
+                some_whitespace.parse(&next, consume, context.clone())
             }),
             |x, _| x
         )
@@ -202,9 +208,9 @@ impl<T: Hash + Eq + Clone> ParseResult<T> {
         self.chain(
             content,
             consume,
-            context,
+            context.clone(),
             chainable(|_prev, next, _meta| {
-                expr_parser.parse(&next, consume, context)
+                expr_parser.parse(&next, consume, context.clone())
             }),
             constructor
         )
@@ -308,7 +314,7 @@ pub struct ConditionalParser {
 
 /// For miscellaneous parsing data.
 /// To ensure scope-consistency, I'm not gonna pass this mutably anywhere
-#[derive(Clone, Copy)]
+#[derive(Clone, Debug)]
 pub struct ParseMetaData {
     pub depth: u32,
     /// Represents when the last iteration involved a zero-width parse operation.
@@ -318,7 +324,15 @@ pub struct ParseMetaData {
     /// Example: Parsing the expression `A + B` (where `A` and `B` are expressions) requires
     /// that a recursive step be taken immediately, so no characters are consumed. If this
     /// flag is not in place properly, stack overflow and infinite recursion *will* occur.
-    pub was_infix: bool
+    pub was_infix: bool,
+    pub path: Vec<ParseDecision>
+}
+
+#[derive(Clone, Debug, Copy)]
+pub enum ParseDecision {
+    UnionLeft,
+    UnionRight,
+    Recur
 }
 
 impl Parser for ExprParser {
@@ -339,7 +353,7 @@ impl Parser for ExprParser {
             match parser.upgrade() {
                 Some(parser) => {
                     num_tried += 1;
-                    match parser.parse(content, consume, meta.increment_depth_no_change_infix()) {
+                    match parser.parse(content, consume, meta.clone().increment_depth_no_change_infix()) {
                         Ok(result) => {
                             for r in result {
                                 out.insert(r);
@@ -448,14 +462,14 @@ impl Parser for InfixParser {
                 format!("Just parsed an infix, not going to parse another one!").into()
             )
         }
-        ParseResult(self.expr_parser.parse(&content, false, meta.with_infix()))
-            .parse_any_whitespace(&content, false, meta)
-            .parse_static_text(&content, false, meta, &self.infix)
-            .parse_any_whitespace(&content, false, meta)
+        ParseResult(self.expr_parser.parse(&content, false, meta.clone().with_infix()))
+            .parse_any_whitespace(&content, false, meta.clone())
+            .parse_static_text(&content, false, meta.clone(), &self.infix)
+            .parse_any_whitespace(&content, false, meta.clone())
             .chain(
                 &content,
                 consume,
-                meta.increment_depth(),
+                meta.clone().increment_depth(),
                 chainable(|_prev_expr, next, meta| {
                     self.expr_parser.parse(&next, consume, meta)
                 }),
@@ -528,8 +542,8 @@ impl Parser for ListParser {
 
                 // check if it's empty
                 let empty_list = ParseResult::<bool>::empty()
-                    .parse_any_whitespace(&rest, false, context)
-                    .parse_static_text(&rest, consume, context, "]");
+                    .parse_any_whitespace(&rest, false, context.clone())
+                    .parse_static_text(&rest, consume, context.clone(), "]");
                 if empty_list.0.is_ok() {
                     return empty_list.map_inner(|_b| Expr::List(vec![])).0
                         .map(|hs|
@@ -542,7 +556,7 @@ impl Parser for ListParser {
                 // this first step seems redundant, but it's easier to compare to what the
                 // next item in the list is
                 let mut parsed = match self.expr_parser
-                    .parse(&rest, false, meta) {
+                    .parse(&rest, false, meta.clone()) {
                     Ok(p) => p.into_iter().map(
                         |(expr, used)| {
                             (vec![expr], used)
@@ -560,12 +574,12 @@ impl Parser for ListParser {
                                         if c == self.separator {
                                             // branch!
                                             if let Some((_comma, next)) = take(&next, 1) { // take off a comma
-                                                let result = whitespace_parser.parse(&next, false, meta);
+                                                let result = whitespace_parser.parse(&next, false, meta.clone());
                                                 let result = ParseResult(result);
                                                 result.chain(
                                                     &next,
                                                     false,
-                                                    meta,
+                                                    meta.clone(),
                                                     chainable(|_spaces, next, meta|
                                                         self.expr_parser.parse(&next, false, meta)
                                                             .map(|ps|
@@ -626,29 +640,29 @@ impl Parser for ConditionalParser {
     fn parse(&self, content: &String, consume: bool, meta: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
         let expr_parser = Rc::clone(&self.expr_parser);
         ParseResult::<bool>::empty()
-            .parse_static_text(&content, false, meta, "if")
-            .parse_any_whitespace(&content, false, meta)
+            .parse_static_text(&content, false, meta.clone(), "if")
+            .parse_any_whitespace(&content, false, meta.clone())
             .parse_expression(
                 content,
                 false,
-                meta,
+                meta.clone(),
                 Rc::clone(&expr_parser),
                 |_, expr|
                     expr
             )
-            .parse_any_whitespace(&content, false, meta)
+            .parse_any_whitespace(&content, false, meta.clone())
             .parse_expression(
                 content,
                 false,
-                meta,
+                meta.clone(),
                 Rc::clone(&expr_parser),
                 |cond, then_true|
                     (cond, then_true)
             )
-            .parse_any_whitespace(&content, false, meta)
-            .parse_static_text(&content, false, meta, "else")
-            .parse_any_whitespace(&content, false, meta)
-            .parse_expression(content, consume, meta, Rc::clone(&expr_parser), |(cond, then), then_else|
+            .parse_any_whitespace(&content, false, meta.clone())
+            .parse_static_text(&content, false, meta.clone(), "else")
+            .parse_any_whitespace(&content, false, meta.clone())
+            .parse_expression(content, consume, meta.clone(), Rc::clone(&expr_parser), |(cond, then), then_else|
                 Expr::Conditional(
                     cond.into(),
                     then.into(),
@@ -664,7 +678,8 @@ impl ParseMetaData {
     pub fn new() -> ParseMetaData {
         ParseMetaData {
             depth: 0,
-            was_infix: false
+            was_infix: false,
+            path: vec![]
         }
     }
 

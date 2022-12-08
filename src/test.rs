@@ -49,7 +49,7 @@ fn parse_str_nat() {
 
     let s = "\"abcd\" abc!".to_string();
     assert_eq!(
-        StringParser().parse(&s, false, context).unwrap(),
+        StringParser().parse(&s, false, context.clone()).unwrap(),
         hashset![(
             Expr::Str(LOString {
                 content: "abcd".to_string()
@@ -60,7 +60,7 @@ fn parse_str_nat() {
 
     let s = "\"this is the good string haha! yay! 'yeet'!\"".to_string();
     assert_eq!(
-        StringParser().parse(&s, false, context).unwrap(),
+        StringParser().parse(&s, false, context.clone()).unwrap(),
         hashset![(
             Expr::Str(LOString {
                 content: substring(&s, 1, s.len() - 2).unwrap()
@@ -202,14 +202,14 @@ fn test_infix_parse_1() {
             )
         ]);
     assert_eq!(
-        parser.parse(&test, true, context),
+        parser.parse(&test, true, context.clone()),
         expected_result
     );
 
     let test = "\"test string1\" + 36".to_string();
     // println!("{:#?}", parser.parse(&test));
     assert_eq!(
-        parser.parse(&test, true, context),
+        parser.parse(&test, true, context.clone()),
         Ok(
             hashset!{
                 (
@@ -288,12 +288,12 @@ fn test_extended_expressions() {
     let context = ParseMetaData::new();
 
     let test = "((32))".to_string();
-    assert_eq!(parser.parse(&test, true, context), Ok(hashset![(Expr::Nat(LONat {
+    assert_eq!(parser.parse(&test, true, context.clone()), Ok(hashset![(Expr::Nat(LONat {
         content: 32
     }), 6)]));
 
     let test = "32".to_string();
-    assert_eq!(parser.parse(&test, true, context), Ok(hashset![(Expr::Nat(LONat {
+    assert_eq!(parser.parse(&test, true, context.clone()), Ok(hashset![(Expr::Nat(LONat {
         content: 32
     }), 2)]));
     // this test passing successfully demonstrates that a parser can use itself *inside itself*
@@ -367,7 +367,7 @@ fn parse_deep_infix() {
     let context = ParseMetaData::new();
 
     let test = "(32) + 12".to_string();
-    assert_eq!(parser.parse(&test, true, context), Ok(hashset![(Expr::Infix(
+    assert_eq!(parser.parse(&test, true, context.clone()), Ok(hashset![(Expr::Infix(
         Expr::Nat(LONat {
             content: 32
         }).into(),
@@ -378,7 +378,7 @@ fn parse_deep_infix() {
 
     let test = "12 + 12 + 12".to_string();
     assert_eq!(
-        parser.parse(&test, true, context),
+        parser.parse(&test, true, context.clone()),
         Ok(
             hashset![
                 (
@@ -456,7 +456,7 @@ fn parse_spaced_infix() {
     let context = ParseMetaData::new();
     let test = "12 13".to_string();
     assert_eq!(
-        parser.parse(&test, true, context),
+        parser.parse(&test, true, context.clone()),
         Ok(
             hashset!{
                 (
@@ -481,7 +481,7 @@ fn parse_spaced_infix() {
 
     let test = "12  13".to_string();
     assert_eq!(
-        parser.parse(&test, true, context),
+        parser.parse(&test, true, context.clone()),
         Ok(
             hashset!{
                 (
@@ -822,7 +822,7 @@ fn conditional_if_else_test() {
     // println!("length of test: {}", test.len());
     // println!("{:#?}", parser.parse(&test, true, ctx));
     assert_eq!(
-        parser.parse(&test, true, ctx),
+        parser.parse(&test, true, ctx.clone()),
         Ok(
             hashset!{
                 (
@@ -853,7 +853,7 @@ fn conditional_if_else_test() {
     // println!("length of test: {}", test.len());
     // println!("{:#?}", parser.parse(&test, true, ctx));
     assert_eq!(
-        parser.parse(&test, true, ctx),
+        parser.parse(&test, true, ctx.clone()),
         Ok(
             hashset!{
                 (
@@ -936,13 +936,13 @@ fn test_let_parse() {
     let test = "let x = 32".to_string();
     // println!("{:?}", let_parser.parse(&test, true, context))
     assert_eq!(
-        let_parser.parse(&test, true, context),
+        let_parser.parse(&test, true, context.clone()),
         Ok(hashset!{(Let(Unit("x".to_string()), Nat(LONat { content: 32 })), test.len())})
     );
 
     let test = "let x=\"hello world\"".to_string();
     assert_eq!(
-        let_parser.parse(&test, true, context),
+        let_parser.parse(&test, true, context.clone()),
         Ok(hashset!{(Let(Unit("x".to_string()), Str(LOString { content: "hello world".to_string() })), test.len())})
     );
 }
@@ -972,13 +972,13 @@ fn weirder_let_parse_tests() {
     let test = "let .-. = 32".to_string();
     // println!("{:?}", let_parser.parse(&test, true, context))
     assert_eq!(
-        let_parser.parse(&test, true, context),
+        let_parser.parse(&test, true, context.clone()),
         Ok(hashset!{(Let(Unit(".-.".to_string()), Nat(LONat { content: 32 })), test.len())})
     );
 
     let test = "let hello=2=\"hello world\"".to_string();
     assert_eq!(
-        let_parser.parse(&test, true, context),
+        let_parser.parse(&test, true, context.clone()),
         Ok(hashset!{(Let(Unit("hello=2".to_string()), Str(LOString { content: "hello world".to_string() })), test.len())})
     );
 }
@@ -1050,7 +1050,7 @@ fn fn_def_parse_test() {
     // println!("test length: {}", test.len());
     // println!("{:?}", fn_parser.parse(&test, true, context));
     assert_eq!(
-        fn_parser.parse(&test, true, context),
+        fn_parser.parse(&test, true, context.clone()),
         Ok(hashset!{
             (
                 FnDef(
@@ -1073,7 +1073,7 @@ fn fn_def_parse_test() {
     // println!("test length: {}", test.len());
     // println!("{:?}", fn_parser.parse(&test, true, context));
     assert_eq!(
-        fn_parser.parse(&test, true, context),
+        fn_parser.parse(&test, true, context.clone()),
         Ok(hashset!{
             (
                 FnDef(
@@ -1094,7 +1094,7 @@ fn fn_def_parse_test() {
     // println!("test length: {}", test.len());
     // println!("{:?}", fn_parser.parse(&test, true, context));
     assert_eq!(
-        fn_parser.parse(&test, true, context),
+        fn_parser.parse(&test, true, context.clone()),
         Ok(hashset!{
             (
                 FnDef(
@@ -1113,7 +1113,7 @@ fn fn_def_parse_test() {
 
     let test = "fn_name[var_a : nice, var_b : nicee]=> 32\"hi\"".to_string();
     // println!("{:?}", fn_parser.parse(&test, true, context));
-    assert!(fn_parser.parse(&test, true, context).is_err());
+    assert!(fn_parser.parse(&test, true, context.clone()).is_err());
 
     // deeper!!!
 
@@ -1122,7 +1122,7 @@ fn fn_def_parse_test() {
     // println!("length of test: {}", test.len());
     // println!("{:?}", fn_parser.parse(&test, true, context));
     assert_eq!(
-        fn_parser.parse(&test, true, context),
+        fn_parser.parse(&test, true, context.clone()),
         Ok(hashset!{
             (
                 FnDef("fn_name".into(), vec![(Unit("var_a".into()), "nice".into())], Nat(LONat { content: 32 }), vec![].into()), 37)})
@@ -1135,7 +1135,7 @@ fn fn_def_parse_test() {
     // println!("{:?}", fn_parser.parse(&test, true, context));
 
     assert_eq!(
-        fn_parser.parse(&test, true, context),
+        fn_parser.parse(&test, true, context.clone()),
         Ok(hashset!{(FnDef("fn_name".into(), vec![(Unit("var_a".into()), "nice".into())],
             Nat(LONat { content: 32 }), vec![Let(Unit("x".into()), Nat(LONat { content: 5 }))].into()), 45)})
     );
@@ -1148,7 +1148,7 @@ fn fn_def_parse_test() {
     // println!("{:?}", fn_parser.parse(&test, true, context));
 
     assert_eq!(
-        fn_parser.parse(&test, true, context),
+        fn_parser.parse(&test, true, context.clone()),
         Ok(hashset!{(FnDef(
             "fn_name".into(),
             vec![(Unit("var_a".into()), "nice".into())],
@@ -1180,7 +1180,7 @@ fn omega_gigachad_function_test() {
             }");
 
         assert_eq!(
-            parser.parse(&test, true, context),
+            parser.parse(&test, true, context.clone()),
 
             // almost straight from {:#?}
             Ok(
@@ -1271,7 +1271,7 @@ fn omega_gigachad_function_test() {
 
 
         assert_eq!(
-            parser.parse(&test, true, context),
+            parser.parse(&test, true, context.clone()),
             Ok(
                 hashset! {
                     (

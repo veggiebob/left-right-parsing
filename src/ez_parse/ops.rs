@@ -1,14 +1,19 @@
 use std::collections::HashSet;
+use std::hash::Hash;
 use std::ops::Add;
-use crate::ez_parse::funcs::{CatParser, concat, SimpleStrParser};
+use crate::ez_parse::funcs::{CatParser, concat, parser_ref, SimpleStrParser};
 use crate::{ParseError, ParseMetaData, Parser};
 
 pub struct EZ<T>(pub T);
 
-impl<P1: Parser, P2: Parser> Add<EZ<P2>> for EZ<P1> {
+impl<P1: Parser, P2: Parser> Add<EZ<P2>> for EZ<P1>
+    where
+        P1::Output: Hash + Eq + Clone,
+        P2::Output: Hash + Eq + Clone
+{
     type Output = CatParser<P1, P2, fn(P1::Output, P2::Output) -> (P1::Output, P2::Output)>;
     fn add(self, rhs: EZ<P2>) -> Self::Output {
-        concat(self.0, rhs.0, Box::new(|a, b| (a, b)))
+        concat(parser_ref(self.0), parser_ref(rhs.0), Box::new(|a, b| (a, b)))
     }
 }
 
@@ -19,10 +24,13 @@ impl<P1: Parser, P2: Parser> Add<EZ<P2>> for EZ<P1> {
 //     }
 // }
 
-impl<P: Parser> Add<String> for EZ<P> {
+impl<P: Parser> Add<String> for EZ<P>
+    where
+        P::Output: Hash + Eq + Clone
+{
     type Output = CatParser<P, SimpleStrParser, fn(P::Output, String) -> (P::Output, String)>;
     fn add(self, rhs: String) -> Self::Output {
-        concat(self.0, SimpleStrParser::new(&rhs), Box::new(|a, b| (a, b)))
+        concat(parser_ref(self.0), parser_ref(SimpleStrParser::new(&rhs)), Box::new(|a, b| (a, b)))
     }
 }
 

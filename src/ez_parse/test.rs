@@ -1,10 +1,13 @@
+use std::borrow::BorrowMut;
+use std::cell::RefCell;
 use std::collections::HashSet;
+use std::rc::Rc;
 use crate::ez_parse::funcs::*;
-use crate::{Expr, NatParser, ParseMetaData, Parser, StringParser};
+use crate::{Expr, NatParser, ParseError, ParseMetaData, Parser, StringParser};
 use crate::Expr::{Nat, Str};
 use crate::ez_parse::funcs::UnionResult::{Left, Right};
 use crate::ez_parse::ops::EZ;
-use crate::lang_obj::{LONat, LOString};
+use crate::lang_obj::{Identifier, LONat, LOString};
 
 // these tests work, just make them assert the results
 
@@ -13,7 +16,7 @@ fn concat_test1() {
     let source = String::from("1234\"abcd\"");
     let p1 = NatParser();
     let p2 = StringParser();
-    let p = concat(p1, p2, Box::new(|nat: Expr, str: Expr| (nat, str)));
+    let p = concat(parser_ref(p1), parser_ref(p2), Box::new(|nat: Expr, str: Expr| (nat, str)));
     let res = p.parse(&source, true, ParseMetaData::new());
     assert_eq!(res, Ok(hashset!{((Expr::Nat(LONat::from(1234)), Expr::Str(LOString::from("abcd".to_string()))), 10)}))
 }
@@ -58,7 +61,7 @@ fn ez_union() {
     let quote = "\"".to_string();
     let p1 = enclose_with(NatParser(), &quote, &quote);
     let p2 = StringParser();
-    let p = union(p1, p2);
+    let p = union(parser_ref(p1), parser_ref(p2));
     let res = p.parse(&source, true, ParseMetaData::new());
     // println!("{:?}", res);
     assert_eq!(res,
@@ -75,8 +78,8 @@ fn ez_kleene() {
 
     let np = NatParser();
     let separator = ",".to_string();
-    let i = concat(np, SimpleStrParser::new(&separator), Box::new(|a, _sep| a));
-    let series_i = kleene(i);
+    let i = concat(parser_ref(np), parser_ref(SimpleStrParser::new(&separator)), Box::new(|a, _sep| a));
+    let series_i = kleene(parser_ref(i));
     let res = series_i.parse(&source, false, ParseMetaData::new());
     // produces any number of correct answers
     assert_eq!(res, Ok(hashset!{
@@ -100,21 +103,21 @@ fn ez_kleene() {
 fn ez_list_parser() {
     // this will demonstrate how to easily create a robust list parser,
     // for elements which are numbers
-    let k_spaces = || kleene(SimpleStrParser::from(" ")); // K* for space
+    let k_spaces = || kleene(parser_ref(SimpleStrParser::from(" "))); // K* for space
 
     let separator = ",";
 
     let expr_p = NatParser(); // <expr> = \d+
     let elem_p = concat(
-        expr_p,
-        concat(
-            concat(k_spaces(), SimpleStrParser::from(separator), Box::new(fst)),
-            k_spaces(),
-            Box::new(|a, b| a)),
+        parser_ref(expr_p),
+        parser_ref(concat(
+            parser_ref(concat(parser_ref(k_spaces()), parser_ref(SimpleStrParser::from(separator)), Box::new(fst))),
+            parser_ref(k_spaces()),
+            Box::new(|a, b| a))),
         Box::new(fst)); // \s*<expr>,\s*
     let elem_series = concat(
-        kleene(elem_p),
-        optional(expr_p), // allows for a hanging separator (ex. `1,2,3,`)
+        parser_ref(kleene(parser_ref(elem_p))),
+        parser_ref(optional(parser_ref(expr_p))), // allows for a hanging separator (ex. `1,2,3,`)
         // add the last element (optionally) at the end.
         Box::new(|v: Vec<Expr>, end| {
             Expr::List(match end {
@@ -130,8 +133,8 @@ fn ez_list_parser() {
 
     // \s*((<expr>\s*,\s*)*)(<expr>?)\s*
     let padded_elem_series = concat(
-        k_spaces(),
-        concat(elem_series, k_spaces(), Box::new(fst)),
+        parser_ref(k_spaces()),
+        parser_ref(concat(parser_ref(elem_series), parser_ref(k_spaces()), Box::new(fst))),
         Box::new(snd));
 
     // <left> = \[, <right> = \]
@@ -142,11 +145,10 @@ fn ez_list_parser() {
     let p = enclose_with(padded_elem_series, &left, &right);
 
 
-
     // ok that took more than I thought, but it's still easy to understand.
     let source = String::from("[ 1 ,2, 3]");
     let res = p.parse(&source, true, ParseMetaData::new());
-    assert_eq!(res, Ok(hashset!{
+    assert_eq!(res, Ok(hashset! {
         (Expr::List(
             vec![
                 Nat(LONat { content: 1 }),
@@ -159,80 +161,168 @@ fn ez_list_parser() {
     // notice it also handles empty lists, with space inside (or not)
     let source = String::from("[ ]");
     let res = p.parse(&source, true, ParseMetaData::new());
-    assert_eq!(res, Ok(hashset!{(Expr::List(vec![]), 3)}));
+    assert_eq!(res, Ok(hashset! {(Expr::List(vec![]), 3)}));
 
     // notice it also handles single-element lists
     let source = String::from("[3]");
     let res = p.parse(&source, true, ParseMetaData::new());
-    assert_eq!(res, Ok(hashset!{(Expr::List(vec![Box::new(Expr::Nat(LONat { content: 3 }))]), 3)}));
+    assert_eq!(res, Ok(hashset! {(Expr::List(vec![Box::new(Expr::Nat(LONat { content: 3 }))]), 3)}));
+
+    // hanging separator
+    let source = "[4,]".to_string();
+    let res = p.parse(&source, true, ParseMetaData::new());
+    assert_eq!(res, Ok(hashset! {(Expr::List(vec![Box::new(Expr::Nat(LONat { content: 4 }))]), 4)}));
 }
 
 #[test]
-fn deep_expr_test() {
-    // this will demonstrate how to easily create a robust list parser,
-    // for elements which are numbers
-    let k_spaces = || kleene(SimpleStrParser::from(" ")); // K* for space
+fn recursive_parser() {
+    let base_parser = parser_ref(SimpleStrParser::from("+"));
+    let placeholder: FunctionParser<String> = FunctionParser(RefCell::new(Box::new(|content, consume, meta| Err(ParseError::from("no impl")))));
+    // *placeholder.0.borrow_mut() = Box::new(|content, consume, meta| Ok(hashset!{("hi".to_string(), 2)}));
+    // use epsilon as a placeholder
+    let placeholder = parser_ref(placeholder);
+    let parser = concat(
+        Rc::clone(&base_parser),
+        Rc::clone(&placeholder),
+        Box::new(|a: String, b: String| a + &b));
 
-    let separator = " ";
+    let parser = parser_ref(parser);
+    let p = Rc::clone(&parser);
+    *placeholder.borrow().0.borrow_mut() = Box::new(
+        move |content, consume, meta| {
+            match p.borrow().parse(content, consume, meta) {
+                Err(_e) => Ok(hashset! {(String::new(), 0)}),
+                x => x
+            }
+        }
+    );
 
-    let expr_p = NatParser(); // <expr> = \d+
-    let elem_p = concat(
-        expr_p,
-        concat(
-            concat(k_spaces(), SimpleStrParser::from(separator), Box::new(fst)),
-            k_spaces(),
-            Box::new(|a, b| a)),
-        Box::new(fst)); // \s*<expr>,\s*
+    // now we parse...?
+    let source = "+".to_string();
+    let res = parser.borrow().parse(&source, true, ParseMetaData::new());
+    assert_eq!(res, Ok(hashset!{("+".to_string(), 1)}));
 
-    let elem_series = concat(
-        kleene(elem_p),
-        optional(expr_p), // allows for a hanging separator (ex. `1,2,3,`)
-        // add the last element (optionally) at the end.
-        Box::new(|v: Vec<Expr>, end| {
-            Expr::List(match end {
-                Some(end) => {
-                    let mut vs = v;
-                    vs.push(end);
-                    vs
-                },
-                None => v
-            }.into_iter().map(Box::new).collect())
+    let source = "++".to_string();
+    let res = parser.borrow().parse(&source, true, ParseMetaData::new());
+    assert_eq!(res, Ok(hashset!{("++".to_string(), 2)}));
+
+    let source = "+++".to_string();
+    let res = parser.borrow().parse(&source, true, ParseMetaData::new());
+    assert_eq!(res, Ok(hashset!{("+++".to_string(), 3)}));
+}
+
+#[test]
+fn concat_epsilon_test() {
+    // important test, because this helped fix a bug in ParseResult::chain
+    let p = concat(parser_ref(SimpleStrParser::from("a")), parser_ref(EpsilonParser), Box::new(fst));
+    let source = "a".to_string();
+    let res = p.parse(&source, true, ParseMetaData::new());
+    println!("{:?}", res);
+    assert_eq!(res, Ok(hashset!{("a".to_string(), 1)}))
+}
+
+#[test]
+fn recursive_test_1() {
+    let s = SimpleStrParser::new(&"1".to_string());
+    let base_expr = parser_ref(s);
+    let placeholder: FunctionParser<Expr> = FunctionParser(RefCell::new(Box::new(|_, _, _| Err("yeet".into()))));
+    let placeholder = parser_ref(placeholder);
+    let (left_paren, right_paren) = ("(".to_string(), ")".to_string());
+    let expr_parser = parser_ref(map(
+        parser_ref(union(base_expr, parser_ref(enclose_with2(Rc::clone(&placeholder), &left_paren, &right_paren)))),
+        Box::new(|u| {
+            match u {
+                Left(_one) => Nat(1.into()),
+                Right(expr) => expr
+            }
         })
-    ); // ((<expr>\s*,\s*)*)(<expr>?)
+    ));
+    let _self_parser = Rc::clone(&expr_parser);
+    *placeholder.borrow().0.borrow_mut() = Box::new(move |content, consume, meta| {
+        if meta.was_infix {
+            Err("tried to use self parser again".into())
+        } else {
+            _self_parser.borrow().parse(content, consume, meta.with_infix())
+        }
+    });
 
-    // \s*((<expr>\s*,\s*)*)(<expr>?)\s*
-    let padded_elem_series = concat(
-        k_spaces(),
-        concat(elem_series, k_spaces(), Box::new(fst)),
-        Box::new(snd));
+    let src = "1".to_string();
+    let res = expr_parser.borrow().parse(&src, true, ParseMetaData::new());
+    assert_eq!(res, Ok(hashset!{(Nat(LONat { content: 1 }), 1)}));
 
-    // <left> = \[, <right> = \]
-    let (left, right) = ("[".to_string(), "]".to_string());
+    let src = "(1)".to_string();
+    let res = expr_parser.borrow().parse(&src, true, ParseMetaData::new());
+    assert_eq!(res, Ok(hashset!{(Nat(LONat { content: 1 }), 3)}));
+}
 
-    // final parser:
-    // <left>\s*((<expr>\s*,\s*)*)(<expr>?)\s*<right>
-    let p = enclose_with(padded_elem_series, &left, &right);
 
-    // ok that took more than I thought, but it's still easy to understand.
-    let source = String::from("[ 1 2  3]");
-    let res = p.parse(&source, true, ParseMetaData::new());
-    assert_eq!(res, Ok(hashset!{
-        (Expr::List(
-            vec![
-                Nat(LONat { content: 1 }),
-                Nat(LONat { content: 2 }),
-                Nat(LONat { content: 3 }),
-            ]
-            .into_iter().map(Box::new).collect()), 10)
-    }));
+#[test]
+fn deep_expr_test() {
+    // our play-parser only parses numbers (1234) or an underscore (_)
+    // let base_expr = parser_ref(map(
+    //     parser_ref(union(
+    //     parser_ref(NatParser()),
+    //     parser_ref(SimpleStrParser::from("_")))),
+    //     |p| match p {
+    //         UnionResult::Left(nat) => nat,
+    //         UnionResult::Right(_underscore) => Expr::Variable(Identifier::Unit("_".to_string()))
+    //     }
+    // ));
+    let base_expr = parser_ref(NatParser());
 
-    // notice it also handles empty lists, with space inside (or not)
-    let source = String::from("[ ]");
-    let res = p.parse(&source, true, ParseMetaData::new());
-    assert_eq!(res, Ok(hashset!{(Expr::List(vec![]), 3)}));
+    // create a placeholder function parser, which will eventually hold our actual expression parser
+    // (the goal of the expression parser is to union it with itself)
+    let placeholder = || parser_ref(
+        FunctionParser(RefCell::new(Box::new(|_, _, _| Err(ParseError::from("placeholder")))))
+    );
 
-    // notice it also handles single-element lists
-    let source = String::from("[3]");
-    let res = p.parse(&source, true, ParseMetaData::new());
-    assert_eq!(res, Ok(hashset!{(Expr::List(vec![Box::new(Expr::Nat(LONat { content: 3 }))]), 3)}));
+    let p_expr = placeholder();
+
+    let infix = parser_ref(concat(
+        Rc::clone(&p_expr),
+        parser_ref(concat(
+                parser_ref(SimpleStrParser::from("+")),
+                Rc::clone(&p_expr),
+                Box::new(snd)
+            )),
+        Box::new(|left, right| Expr::Infix(Box::new(left), "+".to_string(), Box::new(right)))
+    ));
+
+    let expr =
+            parser_ref(map(
+                parser_ref(union(
+                    parser_ref(map(
+                        parser_ref(union(infix, base_expr)),
+                        Box::new(|u| {
+                            println!("joining an infix or base <{:?}>", u);
+                            match u {
+                                Left(expr) => expr,
+                                Right(expr) => expr,
+                            }
+                        }))),
+                    Rc::clone(&p_expr)
+                )),
+                |e| {
+                    println!("Joining an infix or another expression <{:?}>", e);
+                    match e {
+                        Left(infix) => infix,
+                        Right(other) => other
+                    }
+                }
+            ));
+
+    let _expr = Rc::clone(&expr);
+    *p_expr.borrow().0.borrow_mut() = Box::new(move |content, consume, meta| {
+        println!("Function parser being called for {} with meta {:?}", content, meta);
+        if meta.was_infix {
+            Err("Already used 0-space operator".into())
+        } else {
+            _expr.borrow().parse(content, consume, meta.with_infix())
+        }
+    });
+
+    ///////////////////////////////
+    let source = "32+2".to_string();
+    let res = expr.borrow().parse(&source, true, ParseMetaData::new());
+    println!("{:?}", res);
 }

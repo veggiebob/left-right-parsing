@@ -1,15 +1,17 @@
-
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
+use std::marker::PhantomData;
 use std::rc::Rc;
 use crate::parse::{Parser, ParseResult};
 use crate::{chainable, ParseError, ParseMetaData};
 use crate::funcs::{expect_str, take};
 
-// we are going to operate on ParseResults as the main parse object
-// now, we will abstract away into fun parsing objects and meta parsing methods
-// such as enclosure
+type ParserRef<P> = Rc<RefCell<P>>;
+pub fn parser_ref<P: Parser>(p: P) -> ParserRef<P> {
+    return Rc::new(RefCell::new(p));
+}
 
 /// Parser that concatenates two parsers together. This doesn't provide any
 /// branching mechanisms or anything; it's mostly for convenience.
@@ -19,9 +21,11 @@ use crate::funcs::{expect_str, take};
 pub struct CatParser<P1, P2, J>
     where
         P1: Parser,
-        P2: Parser {
-    pub p1: P1,
-    pub p2: P2,
+        P2: Parser,
+        P1::Output: Hash + Eq + Clone,
+        P2::Output: Hash + Eq + Clone {
+    pub p1: ParserRef<P1>,
+    pub p2: ParserRef<P2>,
     pub joiner: Box<J>
 }
 
@@ -30,15 +34,15 @@ pub struct UnionParser<P1, P2>
     where
         P1: Parser,
         P2: Parser {
-    pub p1: P1,
-    pub p2: P2
+    pub p1: ParserRef<P1>,
+    pub p2: ParserRef<P2>
 }
 
 #[derive(Clone)]
 pub struct KleeneParser<P>
     where
         P: Parser {
-    p: P
+    p: ParserRef<P>
 }
 
 /// very simple parser that merely determines if the string is the next part
@@ -52,9 +56,19 @@ pub struct SimpleStrParser {
 #[derive(Clone, Copy)]
 pub struct EpsilonParser;
 
-// impl<P1: Clone + Copy, P2: Clone + Copy, J> Copy for CatParser<P1, P2, J> where Box<J>: Clone + Copy {}
-// impl<P1: Clone, P2: Clone> Copy for UnionParser<P1, P2> {}
-// impl<P: Clone> Copy for KleeneParser<P> {}
+// type ParseFunc<T, F: Fn(&String, bool, ParseMetaData) -> Result<HashSet<(T, usize)>, ParseError>> = F;
+
+/// has a RefCell for a function, so that it can be interchanged easily.
+pub struct FunctionParser<T>(pub RefCell<Box<dyn Fn(&String, bool, ParseMetaData) -> Result<HashSet<(T, usize)>, ParseError>>>);
+
+impl<T> Parser for FunctionParser<T>
+{
+    type Output = T;
+    fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        let result = self.0.borrow()(content, consume, context);
+        result
+    }
+}
 
 impl Parser for EpsilonParser {
     type Output = ();
@@ -85,12 +99,14 @@ impl From<&str> for SimpleStrParser {
 impl<P1: Parser<Output=I1>, P2: Parser<Output=I2>, I1: Hash + Eq + Clone, I2: Hash + Eq + Clone, O: Hash + Eq, J: Fn(I1, I2) -> O> Parser for CatParser<P1, P2, J> {
     type Output = O;
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        let pr = ParseResult(self.p1.parse(content, false, context));
+        println!("Cat parser with {} left, no-width={}", content, &context.was_infix);
+        let pr = ParseResult(self.p1.borrow().parse(content, false, context.clone().with_infix()));
+        let meta = context.increment_depth();
         let res = pr.chain(
             content,
             consume,
-            context,
-            chainable(|a, rest, c| self.p2.parse(&rest, consume, context)),
+            meta,
+            chainable(|a, rest, c| self.p2.borrow().parse(&rest, consume, c)),
             &self.joiner);
         res.0
     }
@@ -110,8 +126,10 @@ impl<P1: Parser, P2: Parser> Parser for UnionParser<P1, P2>
 {
     type Output = UnionResult<P1::Output, P2::Output>;
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        let p1_out = ParseResult(self.p1.parse(content, consume, context));
-        let p2_out = ParseResult(self.p2.parse(content, consume, context));
+        let meta = context.clone().increment_depth().with_infix();
+        println!("Union of two parsers! with {} remaining, no-width={}", content, context.clone().was_infix);
+        let p1_out = ParseResult(self.p1.borrow().parse(content, consume, meta.clone()));
+        let p2_out = ParseResult(self.p2.borrow().parse(content, consume, meta.clone()));
         // multiply the contents, or not
         match p1_out.0 {
             Ok(r1) => {
@@ -158,21 +176,21 @@ impl<P: Parser> Parser for KleeneParser<P>
         let mut all_parses = hashset!{(vec![], 0)};
 
         {
-            let meta = context;
+            let meta = context.increment_depth();
             // original parse
-            let mut res = ParseResult(self.p.parse(content, false, meta))
+            let mut res = ParseResult(self.p.borrow().parse(content, false, meta.clone()))
                 .map_inner(|x| vec![x]).0;
             // if the original parse works...
             while let Ok(hs) = &res {
                 let mut new_res = hashset!{};
-                let meta = meta.increment_depth();
+                let meta = meta.clone().increment_depth();
                 // iterate through these possibilities
                 for (previous, len) in hs {
                     all_parses.insert((previous.clone(), *len));
                     match take(content, *len) {
                         Some((_before, rest)) => {
                             // parse the next, maybe. The inductive step.
-                            let next_res = self.p.parse(&rest, false, meta);
+                            let next_res = self.p.borrow().parse(&rest, false, meta.clone());
                             match next_res {
                                 Ok(hs2) => {
                                     for (e, used) in hs2 {
@@ -210,7 +228,7 @@ impl<P: Parser> Parser for KleeneParser<P>
 impl Parser for SimpleStrParser {
     type Output = String;
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        expect_str(content, &self.str, ParseError {
+        let res = expect_str(content, &self.str, ParseError {
             location: None,
             range: None,
             message: format!("Expected '{}'", self.str)
@@ -218,7 +236,17 @@ impl Parser for SimpleStrParser {
             location: None,
             range: None,
             message: format!("Expected '{}'", self.str)
-        }).map(|s| hashset!{(self.str.clone(), self.str.len())})
+        }).map(|s| hashset!{(self.str.clone(), self.str.len())});
+        match res {
+            Ok(hs) => {
+                if !consume || self.str.len() == content.len() {
+                    Ok(hs)
+                } else {
+                    Err(ParseError::from(format!("String '{}' did not consume all the content", self.str)))
+                }
+            },
+            e => e
+        }
     }
 }
 
@@ -240,11 +268,13 @@ impl Parser for SimpleStrParser {
 // Complement (this doesn't seem useful so I'm not going to make this one, but keep it around)
 
 /// Concatenate two parsers, with a joiner `j`.
-pub fn concat<P1, P2, I1, I2, O, J>(p1: P1, p2: P2, j: Box<J>) -> CatParser<P1, P2, J>
+pub fn concat<P1, P2, O, J>(p1: ParserRef<P1>, p2: ParserRef<P2>, j: Box<J>) -> CatParser<P1, P2, J>
     where
         P1: Parser,
         P2: Parser,
-        J: Fn(I1, I2) -> O {
+        P1::Output: Hash + Eq + Clone,
+        P2::Output: Hash + Eq + Clone,
+        J: Fn(P1::Output, P2::Output) -> O {
     CatParser {
         p1,
         p2,
@@ -252,7 +282,7 @@ pub fn concat<P1, P2, I1, I2, O, J>(p1: P1, p2: P2, j: Box<J>) -> CatParser<P1, 
     }
 }
 
-pub fn union<P1, P2>(p1: P1, p2: P2) -> UnionParser<P1, P2>
+pub fn union<P1, P2>(p1: ParserRef<P1>, p2: ParserRef<P2>) -> UnionParser<P1, P2>
     where
         P1: Parser,
         P2: Parser {
@@ -262,7 +292,7 @@ pub fn union<P1, P2>(p1: P1, p2: P2) -> UnionParser<P1, P2>
     }
 }
 
-pub fn kleene<P>(p: P) -> KleeneParser<P>
+pub fn kleene<P>(p: ParserRef<P>) -> KleeneParser<P>
     where
         P: Parser
 {
@@ -281,7 +311,7 @@ pub struct MappedParser<P, F, T>
         P: Parser,
         F: Fn(P::Output) -> T
 {
-    p: P,
+    p: ParserRef<P>,
     f: Box<F>
 }
 
@@ -294,11 +324,11 @@ impl<P, F, T> Parser for MappedParser<P, F, T>
 {
     type Output = T;
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        ParseResult(self.p.parse(content, consume, context)).map_inner(&self.f).0
+        ParseResult(self.p.borrow().parse(content, consume, context)).map_inner(&self.f).0
     }
 }
 
-pub fn map<P, F, T>(p: P, f: F) -> MappedParser<P, F, T>
+pub fn map<P, F, T>(p: ParserRef<P>, f: F) -> MappedParser<P, F, T>
     where
         P: Parser,
         F: Fn(P::Output) -> T
@@ -312,16 +342,16 @@ pub fn map<P, F, T>(p: P, f: F) -> MappedParser<P, F, T>
 type OptionalParser<P: Parser> = MappedParser<UnionParser<P, EpsilonParser>, fn(<UnionParser<P, EpsilonParser> as Parser>::Output) -> Option<P::Output>, Option<P::Output>>;
 
 /// Convenience for union with nothing, or "optional"
-pub fn optional<P>(p: P) -> OptionalParser<P>
+pub fn optional<P>(p: ParserRef<P>) -> OptionalParser<P>
     where
         P: Parser,
         P::Output: Hash + Eq + Clone
 {
     MappedParser {
-        p: UnionParser {
+        p: parser_ref(UnionParser {
             p1: p,
-            p2: EpsilonParser
-        },
+            p2: parser_ref(EpsilonParser)
+        }),
         f: Box::new(|m| match m {
             UnionResult::Left(x) => Some(x),
             UnionResult::Right(_e) => None
@@ -337,16 +367,52 @@ pub fn enclose_with<P, O>(parser: P, left: &String, right: &String) -> impl Pars
           O: Hash + Eq + Clone + Debug,
 {
     let left_side_parser = concat(
-        SimpleStrParser::new(left),
+        parser_ref(SimpleStrParser::new(left)),
+        parser_ref(parser),
+        Box::new(|left_string, o| o)
+    );
+    let whole_parser = concat(
+        parser_ref(left_side_parser),
+        parser_ref(SimpleStrParser::new(right)),
+        Box::new(|o, right_string| o)
+    );
+    whole_parser
+}
+
+pub fn enclose_with2<P, O>(parser: ParserRef<P>, left: &String, right: &String) -> impl Parser<Output=O>
+    where P: Parser<Output=O>,
+          O: Hash + Eq + Clone + Debug,
+{
+    let left_side_parser = concat(
+        parser_ref(SimpleStrParser::new(left)),
         parser,
         Box::new(|left_string, o| o)
     );
     let whole_parser = concat(
-        left_side_parser,
-        SimpleStrParser::new(right),
+        parser_ref(left_side_parser),
+        parser_ref(SimpleStrParser::new(right)),
         Box::new(|o, right_string| o)
     );
     whole_parser
+}
+
+pub struct NoWidthParserFlag<P: Parser>(pub ParserRef<P>);
+impl<P: Parser> Parser for NoWidthParserFlag<P> {
+    type Output = P::Output;
+    fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        if context.was_infix {
+            Err(ParseError::from("Tried to use a no-width parser twice in a row"))
+        } else {
+            self.0.borrow().parse(content, consume, context.with_infix())
+        }
+    }
+}
+
+pub fn flag_0_width<P>(p: ParserRef<P>) -> NoWidthParserFlag<P>
+    where
+        P: Parser
+{
+    NoWidthParserFlag(p)
 }
 
 pub fn fst<U, V>(u: U, _v: V) -> U {

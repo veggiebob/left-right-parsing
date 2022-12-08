@@ -16,8 +16,8 @@ impl Parser for ProgramParser {
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
         let mut finalized = HashSet::new();
         let mut base = ParseResult(
-            self.stmt_parser.parse(content, false, context)
-        ).map_inner(|v| vec![v]).parse_any_whitespace(content, false, context);
+            self.stmt_parser.parse(content, false, context.clone())
+        ).map_inner(|v| vec![v]).parse_any_whitespace(content, false, context.clone());
 
         if base.len() == 0 {
             return base.map_inner(|v|
@@ -37,7 +37,7 @@ impl Parser for ProgramParser {
             let next = base.clone().chain(
                 content,
                 false,
-                context,
+                context.clone(),
                 chainable(|_p, next, meta| {
                     self.stmt_parser.parse(&next, false, meta)
                 }),
@@ -46,7 +46,7 @@ impl Parser for ProgramParser {
                     stmts.extend(vec![current]);
                     stmts
                 }
-            ).parse_any_whitespace(content, false, context);
+            ).parse_any_whitespace(content, false, context.clone());
             if next.len() > 0 {
                 if let Ok(hs) = &next.0 {
                     for (vec, used) in hs {
