@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::rc::Rc;
-use crate::parse::{Parser, ParseResult};
+use crate::parse::{ParseDecision, Parser, ParseResult};
 use crate::{chainable, ParseError, ParseMetaData};
 use crate::funcs::{expect_str, take};
 
@@ -99,8 +99,8 @@ impl From<&str> for SimpleStrParser {
 impl<P1: Parser<Output=I1>, P2: Parser<Output=I2>, I1: Hash + Eq + Clone, I2: Hash + Eq + Clone, O: Hash + Eq, J: Fn(I1, I2) -> O> Parser for CatParser<P1, P2, J> {
     type Output = O;
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        println!("Cat parser with {} left, no-width={}", content, &context.was_infix);
-        let pr = ParseResult(self.p1.borrow().parse(content, false, context.clone().with_infix()));
+        // println!("Cat parser with {} left, no-width={}", content, &context.was_infix);
+        let pr = ParseResult(self.p1.borrow().parse(content, false, context.clone().add_decision(ParseDecision::Recur)));
         let meta = context.increment_depth();
         let res = pr.chain(
             content,
@@ -126,10 +126,10 @@ impl<P1: Parser, P2: Parser> Parser for UnionParser<P1, P2>
 {
     type Output = UnionResult<P1::Output, P2::Output>;
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        let meta = context.clone().increment_depth().with_infix();
-        println!("Union of two parsers! with {} remaining, no-width={}", content, context.clone().was_infix);
-        let p1_out = ParseResult(self.p1.borrow().parse(content, consume, meta.clone()));
-        let p2_out = ParseResult(self.p2.borrow().parse(content, consume, meta.clone()));
+        let meta = context.clone().increment_depth();
+        // println!("Union of two parsers! with {} remaining, no-width={}", content, context.clone().was_infix);
+        let p1_out = ParseResult(self.p1.borrow().parse(content, consume, meta.clone().add_decision(ParseDecision::UnionLeft)));
+        let p2_out = ParseResult(self.p2.borrow().parse(content, consume, meta.clone().add_decision(ParseDecision::UnionRight)));
         // multiply the contents, or not
         match p1_out.0 {
             Ok(r1) => {

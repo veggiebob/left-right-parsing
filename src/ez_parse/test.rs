@@ -294,7 +294,7 @@ fn deep_expr_test() {
                     parser_ref(map(
                         parser_ref(union(infix, base_expr)),
                         Box::new(|u| {
-                            println!("joining an infix or base <{:?}>", u);
+                            // println!("joining an infix or base <{:?}>", u);
                             match u {
                                 Left(expr) => expr,
                                 Right(expr) => expr,
@@ -303,7 +303,7 @@ fn deep_expr_test() {
                     Rc::clone(&p_expr)
                 )),
                 |e| {
-                    println!("Joining an infix or another expression <{:?}>", e);
+                    // println!("Joining an infix or another expression <{:?}>", e);
                     match e {
                         Left(infix) => infix,
                         Right(other) => other
@@ -313,11 +313,12 @@ fn deep_expr_test() {
 
     let _expr = Rc::clone(&expr);
     *p_expr.borrow().0.borrow_mut() = Box::new(move |content, consume, meta| {
-        println!("Function parser being called for {} with meta {:?}", content, meta);
-        if meta.was_infix {
-            Err("Already used 0-space operator".into())
+        // println!("Function parser being called for {} with meta {:?}", content, meta);
+        if meta.same_paths() || meta.max_history_cycles() > 3 {
+            Err("Followed the exact same path twice".into())
         } else {
-            _expr.borrow().parse(content, consume, meta.with_infix())
+            let meta = meta.rotate_paths();
+            _expr.borrow().parse(content, consume, meta)
         }
     });
 

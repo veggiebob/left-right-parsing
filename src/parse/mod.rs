@@ -325,10 +325,13 @@ pub struct ParseMetaData {
     /// that a recursive step be taken immediately, so no characters are consumed. If this
     /// flag is not in place properly, stack overflow and infinite recursion *will* occur.
     pub was_infix: bool,
-    pub path: Vec<ParseDecision>
+
+    pub path: Vec<ParseDecision>,
+    pub last_path: Vec<ParseDecision>,
+    pub history: Vec<Vec<ParseDecision>>,
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug, Copy, Eq, PartialEq, Hash)]
 pub enum ParseDecision {
     UnionLeft,
     UnionRight,
@@ -679,7 +682,9 @@ impl ParseMetaData {
         ParseMetaData {
             depth: 0,
             was_infix: false,
-            path: vec![]
+            last_path: vec![],
+            path: vec![],
+            history: vec![],
         }
     }
 
@@ -705,6 +710,32 @@ impl ParseMetaData {
         let mut meta = self;
         meta.was_infix = true;
         meta
+    }
+
+    pub fn add_decision(self, parse_decision: ParseDecision) -> ParseMetaData {
+        let mut meta = self.clone();
+        meta.path.push(parse_decision);
+        meta
+    }
+
+    pub fn same_paths(&self) -> bool {
+        self.path == self.last_path
+    }
+
+    pub fn rotate_paths(self) -> ParseMetaData {
+        let mut meta = self.clone();
+        // std::mem::swap(&mut meta.path, &mut meta.last_path);
+        meta.history.push(meta.path.clone());
+        meta.last_path = vec![];
+        for d in meta.path {
+            meta.last_path.push(d);
+        }
+        meta.path = vec![];
+        meta
+    }
+
+    pub fn max_history_cycles(&self) -> usize {
+        crate::ez_parse::cycles::maximum_repeated_subseq(&self.history)
     }
 }
 
