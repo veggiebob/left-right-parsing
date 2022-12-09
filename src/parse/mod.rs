@@ -8,6 +8,7 @@ use std::process::Output;
 use std::rc::{Rc, Weak};
 use std::task::Context;
 use crate::ez_parse::funcs::{CatParser, concat};
+use crate::ez_parse::cycles::*;
 
 use crate::funcs::{char_at, expect_str, take, take_while};
 use crate::lang_obj::{Expr, LONat, LOString, ParseError};
@@ -735,7 +736,11 @@ impl ParseMetaData {
     }
 
     pub fn max_history_cycles(&self) -> usize {
-        crate::ez_parse::cycles::maximum_repeated_subseq(&self.history)
+        maximum_repeated_subseq(&self.history)
+        // match find_first_repeating_subsequence(&self.history) {
+        //     Some((subseq, _i)) => max_repeats(&self.history, &subseq),
+        //     None => 0
+        // }
     }
 }
 

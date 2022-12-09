@@ -2,7 +2,7 @@ use std::cmp::max;
 use std::collections::HashSet;
 use std::hash::Hash;
 
-// n^2?
+/// O(n^2)
 pub fn find_first_repeating_subsequence<T>(xs: &Vec<T>) -> Option<(Vec<T>, usize)>
     where T: PartialEq + Eq + Clone {
     for i in 0..xs.len() {
@@ -27,18 +27,20 @@ pub fn find_first_repeating_subsequence<T>(xs: &Vec<T>) -> Option<(Vec<T>, usize
     None
 }
 
+/// O(n^3)
 pub fn find_all_repeating_subsequences<T>(xs: &Vec<T>) -> HashSet<Vec<T>>
     where T: PartialEq + Eq + Clone + Hash {
     let mut xs = xs.clone();
     let mut seq = HashSet::new();
     while let Some((s, index)) = find_first_repeating_subsequence(&xs) {
         seq.insert(s);
-        xs = xs.as_slice()[index+1..].to_vec();
+        xs.drain(0..index+1);
     }
     seq
 }
 
 /// specifically, the number of *adjacent* repeats
+/// O(n)
 pub fn max_repeats<T>(xs: &Vec<T>, subseq: &Vec<T>) -> usize
     where T: PartialEq + Eq {
     let mut s_index = 0;
@@ -64,6 +66,7 @@ pub fn max_repeats<T>(xs: &Vec<T>, subseq: &Vec<T>) -> usize
     max_count
 }
 
+/// O(n^3) * O(n) = O(n^4)
 pub fn maximum_repeated_subseq<T>(xs: &Vec<T>) -> usize
     where T: PartialEq + Eq + Clone + Hash {
     find_all_repeating_subsequences(xs).iter()

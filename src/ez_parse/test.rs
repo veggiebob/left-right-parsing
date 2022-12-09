@@ -314,7 +314,7 @@ fn deep_expr_test() {
     let _expr = Rc::clone(&expr);
     *p_expr.borrow().0.borrow_mut() = Box::new(move |content, consume, meta| {
         // println!("Function parser being called for {} with meta {:?}", content, meta);
-        if meta.same_paths() || meta.max_history_cycles() > 3 {
+        if meta.same_paths() || meta.max_history_cycles() > 2 {
             Err("Followed the exact same path twice".into())
         } else {
             let meta = meta.rotate_paths();
@@ -323,7 +323,7 @@ fn deep_expr_test() {
     });
 
     ///////////////////////////////
-    let source = "32+2".to_string();
+    let source = "1+2+3+4".to_string();
     let res = expr.borrow().parse(&source, true, ParseMetaData::new());
     println!("{:?}", res);
 }
