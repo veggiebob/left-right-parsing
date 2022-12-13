@@ -327,3 +327,6 @@ fn deep_expr_test() {
     let res = expr.borrow().parse(&source, true, ParseMetaData::new());
     println!("{:?}", res);
 }
+
+#[cfg(test)]
+mod json;

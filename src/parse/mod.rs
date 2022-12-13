@@ -27,7 +27,15 @@ pub trait Parser {
     /// consume:  whether or not the parser should consume the string.
     /// NOTE: true meaning it MUST consume the ENTIRE string
     /// false means nothing; it's indeterminate about the behavior of the parsing
-    fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError>;
+    fn parse(&self,
+             content: &String,
+             consume: bool,
+             context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError>;
+
+    fn parse_all(&self, content: &str) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        let s = content.to_owned();
+        self.parse(&s, true, ParseMetaData::new())
+    }
 }
 
 /// Optional-use struct. Provides more implementation for the output of a parse operation.

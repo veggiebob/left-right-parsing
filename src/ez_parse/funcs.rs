@@ -6,9 +6,10 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use crate::parse::{ParseDecision, Parser, ParseResult};
 use crate::{chainable, ParseError, ParseMetaData};
+use crate::ez_parse::funcs::UnionResult::{Left, Right};
 use crate::funcs::{expect_str, take};
 
-type ParserRef<P> = Rc<RefCell<P>>;
+pub type ParserRef<P> = Rc<RefCell<P>>;
 pub fn parser_ref<P: Parser>(p: P) -> ParserRef<P> {
     return Rc::new(RefCell::new(p));
 }
@@ -119,6 +120,15 @@ pub enum UnionResult<L, R> {
     Right(R)
 }
 
+impl<T> UnionResult<T, T> {
+    pub fn join(self) -> T {
+        match self {
+            Left(L) => L,
+            Right(R) => R
+        }
+    }
+}
+
 impl<P1: Parser, P2: Parser> Parser for UnionParser<P1, P2>
     where
         P1::Output: Hash + Eq + Clone,
@@ -140,7 +150,7 @@ impl<P1: Parser, P2: Parser> Parser for UnionParser<P1, P2>
                     Ok(r2) => {
                         // cartesian product
                         let mut left: HashSet<_> = r1.into_iter()
-                            .map(|(x, len)| (Self::Output::Left(x.clone()), len)).collect();
+                            .map(|(x, len)| (UnionResult::Left(x.clone()), len)).collect();
                         let right: HashSet<_> = r2.into_iter()
                             .map(|(x, len)| (UnionResult::Right(x.clone()), len)).collect();
                         left.extend(right);
@@ -338,6 +348,26 @@ pub fn map<P, F, T>(p: ParserRef<P>, f: F) -> MappedParser<P, F, T>
         f: Box::new(f)
     }
 }
+
+// pub fn map_union<P1, P2, F1, F2, T, X>(p: ParserRef<UnionParser<P1, P2>>, f_left: F1, f_right: F2) -> MappedParser<UnionParser<P1, P2>, dyn Fn(UnionResult<<P1 as Parser>::Output, <P2 as Parser>::Output>) -> T, T>
+// where
+//     P1: Parser,
+//     P2: Parser,
+//     P1::Output: Hash + Eq + Clone,
+//     P2::Output: Hash + Eq + Clone,
+//     F1: Into<Box<dyn Fn(P1::Output) -> T>>,
+//     F2: Into<Box<dyn Fn(P2::Output) -> T>>,
+// { // Fn(<UnionParser<P1, P2> as Parser>::Output) -> T {
+//     let b1 = f_left.into();
+//     let b2 = f_right.into();
+//     MappedParser {
+//         p,
+//         f: Box::new(move |u: UnionResult<_, _>| match u {
+//             UnionResult::Left(l) => b1(l),
+//             UnionResult::Right(r) => b2(r)
+//         })
+//     }
+// }
 
 type OptionalParser<P: Parser> = MappedParser<UnionParser<P, EpsilonParser>, fn(<UnionParser<P, EpsilonParser> as Parser>::Output) -> Option<P::Output>, Option<P::Output>>;
 
