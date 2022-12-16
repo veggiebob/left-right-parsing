@@ -1,7 +1,5 @@
 use crate::ez_parse::funcs::UnionResult::{Left, Right};
-use crate::ez_parse::funcs::{
-    kleene, map, optional, parser_ref, FunctionParser, ParserRef, SimpleStrParser,
-};
+use crate::ez_parse::funcs::{kleene, map, optional, parser_ref, FunctionParser, ParserRef, SimpleStrParser, concat};
 use crate::ez_parse::ops::EZ;
 use crate::lang_obj::{Expr, ParseError};
 use crate::parse::{NatParser, StringParser};
@@ -11,7 +9,7 @@ use std::rc::Rc;
 
 /*
 
-Minimal JSON Parser! (lacking arrays, coming soon, it is trivial I promise)
+Minimal JSON Parser!
 
 Demonstrates the use of the library and how EZ can be used to simplify parser
 combinations. It is still pretty messy though.
@@ -20,6 +18,10 @@ On reflection, one big weakness is the exhaustive types being used.
 The variable `parser` at the bottom has a type so long it is definitely NOT
 feasible to write out. I'm not sure if this will be a problem in the future,
 but it does seem to add baggage.
+
+Additionally, there are still sore spots where EZ doesn't make it much easier
+to add parsers together, so we have to revert to the functions. However, I
+think those functions are also pretty easy to understand.
 
  */
 
@@ -49,10 +51,7 @@ fn json_parser() {
             Right(_b) => JSON::Bool(false),
         },
     );
-    let parser: ParserRef<FunctionParser<JSON>> =
-        parser_ref(FunctionParser(RefCell::new(Box::new(|_, _, _| {
-            Err(ParseError::from("placeholder"))
-        }))));
+    let parser = FunctionParser::<JSON>::placeholder::<JSON>();
     let O = "{"
         + EZ(kleene(parser_ref(EZ(S.clone()) + ":" + &parser + ",")))
         + EZ(optional(parser_ref(EZ(S.clone()) + ":" + &parser)))
@@ -67,9 +66,22 @@ fn json_parser() {
         }
         JSON::Object(hmap)
     });
+
     let json_S = map(parser_ref(S), JSON::Str);
-    // let A = # finish array implementation
-    let P = parser_ref(EZ(json_S) / EZ(N) / EZ(B) / EZ(O)); // / A;
+
+    let expr_comma = map(parser_ref(&parser + EZ(SimpleStrParser::from(","))), |(js, _x)| js);
+    let list_expr = kleene(parser_ref(expr_comma));
+    let opt_last_element = optional(Rc::clone(&parser));
+    let A = "[" + EZ(concat(parser_ref(list_expr), parser_ref(opt_last_element), Box::new(|mut xs: Vec<JSON>, vs| {
+        if let Some(x) = vs {
+            xs.push(x);
+        }
+        JSON::Array(xs)
+    }))) + "]"; // finish array implementation
+
+    // combine all the parsers together
+    // "string parser" OR "number parser" OR "boolean parser" OR ...
+    let P = parser_ref(EZ(json_S) / EZ(N) / EZ(B) / EZ(O) / EZ(A));
 
     let _p = Rc::clone(&P);
     *parser.borrow().0.borrow_mut() = Box::new(move |content, consume, meta| {
@@ -82,6 +94,6 @@ fn json_parser() {
     });
 
     let parser = P.borrow();
-    let res = parser.parse_all("{\"key1\":1,\"key2\":{}}");
+    let res = parser.parse_all("{\"key1\":1,\"key2\":{},\"key3\":[1,2,{}]}");
     println!("{:?}", res);
 }

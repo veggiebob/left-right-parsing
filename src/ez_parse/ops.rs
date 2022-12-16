@@ -98,30 +98,6 @@ impl<P: Parser> Add<&str> for EZ<P>
     }
 }
 
-
-
-// impl<P: Parser, S: Into<String>> Add<S> for EZ<P> {
-//     type Output = CatParser<P, SimpleStrParser, fn(P::Output, String) -> (P::Output, String)>;
-//     fn add(self, rhs: S) -> Self::Output {
-//         self + rhs.into()
-//     }
-// }
-
-// impl Parser for &str {
-//     type Output = String;
-//     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-//         let s = self.to_string();
-//         SimpleStrParser::new(&s).parse(content, consume, context)
-//     }
-// }
-//
-// impl Parser for String {
-//     type Output = String;
-//     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-//         SimpleStrParser::new(&self).parse(content, consume, context)
-//     }
-// }
-
 impl<T: Parser> Add<EZ<T>> for &str
     where T::Output: Hash + Eq + Clone {
     type Output = EZ<CatParser<SimpleStrParser, T, fn(String, T::Output) -> T::Output>>;
@@ -152,6 +128,7 @@ impl<P1: Parser, P2: Parser> Mul<EZ<P2>> for EZ<P1> {
     }
 }
 
+/// div operator for union of parsers which output the SAME TYPE (trivial combination)
 impl<P1, P2> Div<EZ<P2>> for EZ<P1>
 where
     P1: Parser,

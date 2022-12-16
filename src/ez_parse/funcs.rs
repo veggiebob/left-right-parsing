@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fmt::Debug;
@@ -62,6 +63,14 @@ pub struct EpsilonParser;
 /// has a RefCell for a function, so that it can be interchanged easily.
 pub struct FunctionParser<T>(pub RefCell<Box<dyn Fn(&String, bool, ParseMetaData) -> Result<HashSet<(T, usize)>, ParseError>>>);
 
+impl<T> FunctionParser<T> {
+    pub fn placeholder<S>() -> ParserRef<FunctionParser<S>> {
+        parser_ref(FunctionParser(RefCell::new(Box::new(|_, _, _| {
+            Err(ParseError::from("placeholder"))
+        }))))
+    }
+}
+
 impl<T> Parser for FunctionParser<T>
 {
     type Output = T;
@@ -101,13 +110,13 @@ impl<P1: Parser<Output=I1>, P2: Parser<Output=I2>, I1: Hash + Eq + Clone, I2: Ha
     type Output = O;
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
         // println!("Cat parser with {} left, no-width={}", content, &context.was_infix);
-        let pr = ParseResult(self.p1.borrow().parse(content, false, context.clone().add_decision(ParseDecision::Recur)));
+        let pr = ParseResult(self.p1.as_ref().borrow().parse(content, false, context.clone().add_decision(ParseDecision::Recur)));
         let meta = context.increment_depth();
         let res = pr.chain(
             content,
             consume,
             meta,
-            chainable(|a, rest, c| self.p2.borrow().parse(&rest, consume, c)),
+            chainable(|a, rest, c| self.p2.as_ref().borrow().parse(&rest, consume, c)),
             &self.joiner);
         res.0
     }
@@ -138,8 +147,8 @@ impl<P1: Parser, P2: Parser> Parser for UnionParser<P1, P2>
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
         let meta = context.clone().increment_depth();
         // println!("Union of two parsers! with {} remaining, no-width={}", content, context.clone().was_infix);
-        let p1_out = ParseResult(self.p1.borrow().parse(content, consume, meta.clone().add_decision(ParseDecision::UnionLeft)));
-        let p2_out = ParseResult(self.p2.borrow().parse(content, consume, meta.clone().add_decision(ParseDecision::UnionRight)));
+        let p1_out = ParseResult(self.p1.as_ref().borrow().parse(content, consume, meta.clone().add_decision(ParseDecision::UnionLeft)));
+        let p2_out = ParseResult(self.p2.as_ref().borrow().parse(content, consume, meta.clone().add_decision(ParseDecision::UnionRight)));
         // multiply the contents, or not
         match p1_out.0 {
             Ok(r1) => {
@@ -188,7 +197,7 @@ impl<P: Parser> Parser for KleeneParser<P>
         {
             let meta = context.increment_depth();
             // original parse
-            let mut res = ParseResult(self.p.borrow().parse(content, false, meta.clone()))
+            let mut res = ParseResult(self.p.as_ref().borrow().parse(content, false, meta.clone()))
                 .map_inner(|x| vec![x]).0;
             // if the original parse works...
             while let Ok(hs) = &res {
@@ -200,7 +209,7 @@ impl<P: Parser> Parser for KleeneParser<P>
                     match take(content, *len) {
                         Some((_before, rest)) => {
                             // parse the next, maybe. The inductive step.
-                            let next_res = self.p.borrow().parse(&rest, false, meta.clone());
+                            let next_res = self.p.as_ref().borrow().parse(&rest, false, meta.clone());
                             match next_res {
                                 Ok(hs2) => {
                                     for (e, used) in hs2 {
@@ -334,7 +343,7 @@ impl<P, F, T> Parser for MappedParser<P, F, T>
 {
     type Output = T;
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        ParseResult(self.p.borrow().parse(content, consume, context)).map_inner(&self.f).0
+        ParseResult(self.p.as_ref().borrow().parse(content, consume, context)).map_inner(&self.f).0
     }
 }
 
@@ -433,7 +442,7 @@ impl<P: Parser> Parser for NoWidthParserFlag<P> {
         if context.was_infix {
             Err(ParseError::from("Tried to use a no-width parser twice in a row"))
         } else {
-            self.0.borrow().parse(content, consume, context.with_infix())
+            self.0.as_ref().borrow().parse(content, consume, context.with_infix())
         }
     }
 }
