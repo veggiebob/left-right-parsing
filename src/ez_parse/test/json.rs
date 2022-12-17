@@ -1,10 +1,10 @@
 use crate::ez_parse::funcs::UnionResult::{Left, Right};
-use crate::ez_parse::funcs::{kleene, map, optional, parser_ref, FunctionParser, ParserRef, SimpleStrParser, concat};
+use crate::ez_parse::funcs::{kleene, map, optional, parser_ref, FunctionParser, ParserRef, SimpleStrParser, concat, KleeneParser, CatParser, MappedParser, UnionParser, fst};
 use crate::ez_parse::ops::EZ;
 use crate::lang_obj::{Expr, ParseError};
-use crate::parse::{NatParser, StringParser};
+use crate::parse::{LONatParser, LOStringParser, NatParser, StringParser};
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::rc::Rc;
 
 /*
@@ -28,7 +28,7 @@ think those functions are also pretty easy to understand.
 #[derive(Hash, PartialEq, Eq, Clone, Debug)]
 enum JSON {
     Str(String),
-    Num(usize),
+    Num(u64),
     Bool(bool),
     Object(BTreeMap<String, JSON>),
     Array(Vec<JSON>),
@@ -36,27 +36,35 @@ enum JSON {
 
 #[test]
 fn json_parser() {
-    let S = map(parser_ref(StringParser()), |e| match e {
-        Expr::Str(lo_string) => lo_string.content,
-        x => x.to_string(),
-    });
-    let N = map(parser_ref(NatParser()), |e| match e {
-        Expr::Nat(lo_nat) => JSON::Num(lo_nat.content as usize),
-        x => JSON::Num(0),
-    });
+    // parse strings
+    let S = StringParser();
+
+    // ...JSON string parser
+    let json_S = map(S, JSON::Str);
+
+    // parse (natural) numbers
+    let N = map(NatParser(), JSON::Num);
+
+    // parse booleans (true | false)
     let B = map(
-        parser_ref(EZ(SimpleStrParser::from("true")) * EZ(SimpleStrParser::from("false"))),
+        EZ(SimpleStrParser::from("true")) * EZ(SimpleStrParser::from("false")),
         |u| match u {
             Left(_b) => JSON::Bool(true),
             Right(_b) => JSON::Bool(false),
         },
     );
+
+    // placeholder for self reference object
     let parser = FunctionParser::<JSON>::placeholder::<JSON>();
+
+    // parse objects (collect data)
     let O = "{"
-        + EZ(kleene(parser_ref(EZ(S.clone()) + ":" + &parser + ",")))
-        + EZ(optional(parser_ref(EZ(S.clone()) + ":" + &parser)))
+        + EZ(kleene(EZ(S.clone()) + ":" + &parser + ","))
+        + EZ(optional(EZ(S.clone()) + ":" + &parser))
         + "}";
-    let O = map(parser_ref(O), |(mut vs, last)| {
+
+    // ...map this to the correct type; (Vec<JSON>, Option<JSON>) -> JSON
+    let O = map(O, |(mut vs, last)| {
         if let Some(x) = last {
             vs.push(x);
         }
@@ -67,12 +75,11 @@ fn json_parser() {
         JSON::Object(hmap)
     });
 
-    let json_S = map(parser_ref(S), JSON::Str);
-
-    let expr_comma = map(parser_ref(&parser + EZ(SimpleStrParser::from(","))), |(js, _x)| js);
+    // parse arrays
+    let expr_comma = map(&parser + EZ(SimpleStrParser::from(",")), fst);
     let list_expr = kleene(parser_ref(expr_comma));
-    let opt_last_element = optional(Rc::clone(&parser));
-    let A = "[" + EZ(concat(parser_ref(list_expr), parser_ref(opt_last_element), Box::new(|mut xs: Vec<JSON>, vs| {
+    let opt_last_element = optional(&parser);
+    let A = "[" + EZ(concat(list_expr, opt_last_element, Box::new(|mut xs: Vec<JSON>, vs| {
         if let Some(x) = vs {
             xs.push(x);
         }
@@ -94,6 +101,6 @@ fn json_parser() {
     });
 
     let parser = P.borrow();
-    let res = parser.parse_all("{\"key1\":1,\"key2\":{},\"key3\":[1,2,{}]}");
+    let res: Result<HashSet<(JSON, _)>, _> = parser.parse_all("{\"key1\":1,\"key2\":{},\"key3\":[1,2,{}]}");
     println!("{:?}", res);
 }

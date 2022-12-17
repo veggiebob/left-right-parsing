@@ -289,11 +289,20 @@ pub struct ExprParser {
     pub parsers: RefCell<Vec<Weak<GenericExprParser>>>
 }
 
+/// produces LO Strings
+#[derive(Clone, Copy)]
+pub struct LOStringParser();
+
+/// Produces actual strings
 #[derive(Clone, Copy)]
 pub struct StringParser();
 
 #[derive(Clone, Copy)]
+pub struct LONatParser();
+
+#[derive(Clone, Copy)]
 pub struct NatParser();
+
 pub struct ListParser {
     pub expr_parser: Rc<ExprParser>,
     pub separator: char
@@ -392,7 +401,7 @@ impl Parser for ExprParser {
     }
 }
 
-impl Parser for StringParser {
+impl Parser for LOStringParser {
     type Output = Expr;
     // naive implementation with the assumption that no double quotes (") are present in the string
     fn parse(&self, content: &String, consume: bool, meta: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
@@ -438,7 +447,49 @@ impl Parser for StringParser {
     }
 }
 
-impl Parser for NatParser {
+
+impl Parser for StringParser {
+    type Output = String;
+    // naive implementation with the assumption that no double quotes (") are present in the string
+    fn parse(&self, content: &String, consume: bool, meta: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        if let Some((q, s)) = crate::funcs::take(content, 1) {
+            if q != "\"" {
+                Err(ParseError {
+                    location: Some(0),
+                    range: None,
+                    message: "Expected a \" to start string.".to_string()
+                })
+            } else {
+                let (string_content, end) = crate::funcs::take_while(&s, |&c| c != '"');
+                let str_len = string_content.len();
+                if end.len() == 0 || crate::funcs::char_at(&end, 0).unwrap() != '"' {
+                    Err(ParseError {
+                        location: Some(1 + str_len + 1),
+                        range: Some((0, 1 + str_len + 1)),
+                        message: "Expected a closing \" to end string literal.".to_string()
+                    })
+                } else {
+                    let used = 1 + str_len + 1;
+                    if consume && used < content.len() {
+                        Err(
+                            "Could not consume all content when parsing string.".into()
+                        )
+                    } else {
+                        Ok(hashset![(string_content, used)])
+                    }
+                }
+            }
+        } else {
+            Err(ParseError {
+                location: Some(0),
+                range: None,
+                message: "Expected a string longer than length 1.".to_string()
+            })
+        }
+    }
+}
+
+impl Parser for LONatParser {
     type Output = Expr;
 
     fn parse(&self, content: &String, consume: bool, meta: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
@@ -452,6 +503,27 @@ impl Parser for NatParser {
                     }),
                     n.len()
                 )])
+            }
+        } else {
+            Err(ParseError {
+                location: Some(0),
+                range: None,
+                message: "Expected digit".to_string()
+            })
+        }
+    }
+}
+
+impl Parser for NatParser {
+    type Output = u64;
+
+    fn parse(&self, content: &String, consume: bool, meta: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        let (n, _) = crate::funcs::take_while(content, |c| c.is_digit(10));
+        if n.len() > 0 {
+            if consume && n.len() < content.len() {
+                Err("Could not consume entire content when parsing nat.".into())
+            } else {
+                Ok(hashset![(n.parse().unwrap(), n.len())])
             }
         } else {
             Err(ParseError {

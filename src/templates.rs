@@ -29,8 +29,8 @@ pub fn language_1<F>(mut f: F)
     ////////////////////////////////////////////////////
 
     // primitive parsers
-    let string_parser = Rc::new(box_expr_parser!(StringParser()));
-    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+    let string_parser = Rc::new(box_expr_parser!(LOStringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(LONatParser()));
     let var_parser = Rc::new(box_expr_parser!(VariableParser::default(IdentifierParser::new(IDENTIFIER_ALLOWED_CHARS))));
 
     // start off with a couple simple parsers

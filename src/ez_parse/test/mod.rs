@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use crate::ez_parse::funcs::*;
-use crate::{Expr, NatParser, ParseError, ParseMetaData, Parser, StringParser};
+use crate::{Expr, LONatParser, ParseError, ParseMetaData, Parser, LOStringParser};
 use crate::Expr::{Nat, Str};
 use crate::ez_parse::funcs::UnionResult::{Left, Right};
 use crate::ez_parse::ops::EZ;
@@ -14,8 +14,8 @@ use crate::lang_obj::{Identifier, LONat, LOString};
 #[test]
 fn concat_test1() {
     let source = String::from("1234\"abcd\"");
-    let p1 = NatParser();
-    let p2 = StringParser();
+    let p1 = LONatParser();
+    let p2 = LOStringParser();
     let p = concat(parser_ref(p1), parser_ref(p2), Box::new(|nat: Expr, str: Expr| (nat, str)));
     let res = p.parse(&source, true, ParseMetaData::new());
     assert_eq!(res, Ok(hashset!{((Expr::Nat(LONat::from(1234)), Expr::Str(LOString::from("abcd".to_string()))), 10)}))
@@ -32,7 +32,7 @@ fn test_simple_str_parser() {
 #[test]
 fn enclose_test1() {
     let source = String::from("(1234)");
-    let p = NatParser();
+    let p = LONatParser();
     let left = "(".to_string();
     let right = ")".to_string();
     let e = enclose_with(p, &left, &right);
@@ -44,8 +44,8 @@ fn enclose_test1() {
 #[test]
 fn ez_add_parsers() {
     let source = String::from("1234\"abcd\"");
-    let p1 = NatParser();
-    let p2 = StringParser();
+    let p1 = LONatParser();
+    let p2 = LOStringParser();
     let p = EZ(p1) + EZ(p2);
     let res = p.parse(&source, true, ParseMetaData::new());
     assert_eq!(res, Ok(hashset!{((Nat(LONat { content: 1234 }), Str(LOString { content: "abcd".to_string() })), 10)}))
@@ -59,8 +59,8 @@ fn ez_union() {
 
     let source = String::from("\"1234\"");
     let quote = "\"".to_string();
-    let p1 = enclose_with(NatParser(), &quote, &quote);
-    let p2 = StringParser();
+    let p1 = enclose_with(LONatParser(), &quote, &quote);
+    let p2 = LOStringParser();
     let p = union(parser_ref(p1), parser_ref(p2));
     let res = p.parse(&source, true, ParseMetaData::new());
     // println!("{:?}", res);
@@ -76,7 +76,7 @@ fn ez_union() {
 fn ez_kleene() {
     let source = String::from("1,2,3,");
 
-    let np = NatParser();
+    let np = LONatParser();
     let separator = ",".to_string();
     let i = concat(parser_ref(np), parser_ref(SimpleStrParser::new(&separator)), Box::new(|a, _sep| a));
     let series_i = kleene(parser_ref(i));
@@ -107,7 +107,7 @@ fn ez_list_parser() {
 
     let separator = ",";
 
-    let expr_p = NatParser(); // <expr> = \d+
+    let expr_p = LONatParser(); // <expr> = \d+
     let elem_p = concat(
         parser_ref(expr_p),
         parser_ref(concat(
@@ -268,7 +268,7 @@ fn deep_expr_test() {
     //         UnionResult::Right(_underscore) => Expr::Variable(Identifier::Unit("_".to_string()))
     //     }
     // ));
-    let base_expr = parser_ref(NatParser());
+    let base_expr = parser_ref(LONatParser());
 
     // create a placeholder function parser, which will eventually hold our actual expression parser
     // (the goal of the expression parser is to union it with itself)

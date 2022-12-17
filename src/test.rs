@@ -13,7 +13,7 @@ use crate::lang_obj::Identifier::Unit;
 use crate::lang_obj::Statement;
 use crate::lang_obj::Statement::{FnDef, Let};
 use crate::parse::{chainable, ConditionalParser, LengthQualifier, ListParser, ParseMetaData, Parser, ParseResult, TakeWhileParser};
-use crate::parse::{ExprParser, GenericExprParser, InfixParser, NatParser, ParentheticalParser, StringParser};
+use crate::parse::{ExprParser, GenericExprParser, InfixParser, LONatParser, ParentheticalParser, LOStringParser};
 use crate::parse::LengthQualifier::LEQ;
 use crate::parse::structure_parsers::{FnDefParser, IdentifierParser, LetParser, StatementParser, TypeParser, VariableParser};
 use crate::program_parsing::ProgramParser;
@@ -49,7 +49,7 @@ fn parse_str_nat() {
 
     let s = "\"abcd\" abc!".to_string();
     assert_eq!(
-        StringParser().parse(&s, false, context.clone()).unwrap(),
+        LOStringParser().parse(&s, false, context.clone()).unwrap(),
         hashset![(
             Expr::Str(LOString {
                 content: "abcd".to_string()
@@ -60,7 +60,7 @@ fn parse_str_nat() {
 
     let s = "\"this is the good string haha! yay! 'yeet'!\"".to_string();
     assert_eq!(
-        StringParser().parse(&s, false, context.clone()).unwrap(),
+        LOStringParser().parse(&s, false, context.clone()).unwrap(),
         hashset![(
             Expr::Str(LOString {
                 content: substring(&s, 1, s.len() - 2).unwrap()
@@ -71,7 +71,7 @@ fn parse_str_nat() {
 
     let s = "143abc".to_string();
     assert_eq!(
-        NatParser().parse(&s, false, context).unwrap(),
+        LONatParser().parse(&s, false, context).unwrap(),
         hashset![(
             Expr::Nat(LONat {
                 content: 143
@@ -83,8 +83,8 @@ fn parse_str_nat() {
 
 #[test]
 fn me_reminding_myself_about_everything() {
-    let nat_parser = NatParser();
-    let string_parser = StringParser();
+    let nat_parser = LONatParser();
+    let string_parser = LOStringParser();
     let content = String::from("1234\"hi\"");
     let result1 = ParseResult(nat_parser.parse(&content, false, ParseMetaData::new()));
     println!("{:?}", result1);
@@ -104,8 +104,8 @@ fn me_reminding_myself_about_everything() {
 fn test_0_depth_parser() {
 
     // first make our expression parser
-    let string_parser = Rc::new(box_expr_parser!(StringParser()));
-    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+    let string_parser = Rc::new(box_expr_parser!(LOStringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(LONatParser()));
 
     let root_parsers = RefCell::new(vec![
         &string_parser,
@@ -143,8 +143,8 @@ fn identifier_parse() {
     ////////////////////////////////////////////////////
 
     // primitive parsers
-    let string_parser = Rc::new(box_expr_parser!(StringParser()));
-    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+    let string_parser = Rc::new(box_expr_parser!(LOStringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(LONatParser()));
     let var_parser = Rc::new(box_expr_parser!(VariableParser::default(IdentifierParser::new(IDENTIFIER_ALLOWED_CHARS))));
 
     // start off with a couple simple parsers
@@ -166,8 +166,8 @@ fn identifier_parse() {
 #[test]
 fn test_infix_parse_1() {
     // first make our expression parser
-    let string_parser = Rc::new(box_expr_parser!(StringParser()));
-    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+    let string_parser = Rc::new(box_expr_parser!(LOStringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(LONatParser()));
 
     let root_parsers = RefCell::new(vec![
         &string_parser,
@@ -261,8 +261,8 @@ fn test_infix_parse_1() {
 
 #[test]
 fn test_extended_expressions() {
-    let string_parser = Rc::new(box_expr_parser!(StringParser()));
-    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+    let string_parser = Rc::new(box_expr_parser!(LOStringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(LONatParser()));
 
     // start off with a couple simple parsers
     let root_parsers = RefCell::new(vec![
@@ -334,8 +334,8 @@ fn test_extended_expressions() {
 #[test]
 fn parse_deep_infix() {
     // combine infix and parenthetical parser for big expression parsing power!
-    let string_parser = Rc::new(box_expr_parser!(StringParser()));
-    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+    let string_parser = Rc::new(box_expr_parser!(LOStringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(LONatParser()));
 
     // start off with a couple simple parsers
     let root_parsers = RefCell::new(vec![
@@ -423,8 +423,8 @@ fn parse_deep_infix() {
 #[test]
 fn parse_spaced_infix() {
     // combine infix and parenthetical parser for big expression parsing power!
-    let string_parser = Rc::new(box_expr_parser!(StringParser()));
-    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+    let string_parser = Rc::new(box_expr_parser!(LOStringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(LONatParser()));
 
     // start off with a couple simple parsers
     let root_parsers = RefCell::new(vec![
@@ -532,8 +532,8 @@ fn parse_spaced_infix() {
 
 #[test]
 fn list_test_1() {
-    let string_parser = Rc::new(box_expr_parser!(StringParser()));
-    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+    let string_parser = Rc::new(box_expr_parser!(LOStringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(LONatParser()));
 
     // start off with a couple simple parsers
     let root_parsers = RefCell::new(vec![
@@ -592,8 +592,8 @@ fn list_test_1() {
 
 #[test]
 pub fn list_test_2() {
-    let string_parser = Rc::new(box_expr_parser!(StringParser()));
-    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+    let string_parser = Rc::new(box_expr_parser!(LOStringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(LONatParser()));
 
     // start off with a couple simple parsers
     let root_parsers = RefCell::new(vec![
@@ -631,8 +631,8 @@ pub fn list_test_2() {
 #[test]
 fn parse_deep_list_expressions() {
     // combine infix and parenthetical parser for big expression parsing power!
-    let string_parser = Rc::new(box_expr_parser!(StringParser()));
-    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+    let string_parser = Rc::new(box_expr_parser!(LOStringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(LONatParser()));
 
     // start off with a couple simple parsers
     let root_parsers = RefCell::new(vec![
@@ -705,7 +705,7 @@ fn parse_deep_list_expressions() {
 
 #[test]
 fn chain_test() {
-    let num_parser = Rc::new(box_expr_parser!(NatParser()));
+    let num_parser = Rc::new(box_expr_parser!(LONatParser()));
     let parenthetical_parser = ParentheticalParser {
         expr_parser: Rc::new(ExprParser {
             parsers: RefCell::new(vec![
@@ -775,8 +775,8 @@ fn take_while_parser_test() {
 fn conditional_if_else_test() {
     // fairly ominous parser
 
-    let string_parser = Rc::new(box_expr_parser!(StringParser()));
-    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+    let string_parser = Rc::new(box_expr_parser!(LOStringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(LONatParser()));
 
     // start off with a couple simple parsers
     let root_parsers = RefCell::new(vec![
@@ -914,8 +914,8 @@ fn conditional_if_else_test() {
 #[test]
 fn test_let_parse() {
 
-    let string_parser = Rc::new(box_expr_parser!(StringParser()));
-    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+    let string_parser = Rc::new(box_expr_parser!(LOStringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(LONatParser()));
 
     let root_parsers = RefCell::new(vec![
         &string_parser,
@@ -950,8 +950,8 @@ fn test_let_parse() {
 #[test]
 fn weirder_let_parse_tests() {
 
-    let string_parser = Rc::new(box_expr_parser!(StringParser()));
-    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+    let string_parser = Rc::new(box_expr_parser!(LOStringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(LONatParser()));
 
     let root_parsers = RefCell::new(vec![
         &string_parser,
@@ -986,8 +986,8 @@ fn weirder_let_parse_tests() {
 #[test]
 fn fn_def_parse_test() {
     // create a basic expression parser (shallow, no recursion)
-    let string_parser = Rc::new(box_expr_parser!(StringParser()));
-    let nat_parser = Rc::new(box_expr_parser!(NatParser()));
+    let string_parser = Rc::new(box_expr_parser!(LOStringParser()));
+    let nat_parser = Rc::new(box_expr_parser!(LONatParser()));
 
     let root_parsers = RefCell::new(vec![
         &string_parser,

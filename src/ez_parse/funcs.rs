@@ -8,6 +8,7 @@ use std::rc::Rc;
 use crate::parse::{ParseDecision, Parser, ParseResult};
 use crate::{chainable, ParseError, ParseMetaData};
 use crate::ez_parse::funcs::UnionResult::{Left, Right};
+use crate::ez_parse::ops::EZ;
 use crate::funcs::{expect_str, take};
 
 pub type ParserRef<P> = Rc<RefCell<P>>;
@@ -269,16 +270,6 @@ impl Parser for SimpleStrParser {
     }
 }
 
-// evil, do not use (causes infinite recursion (but also causes program to compile!))
-// impl<T> Parser for &T
-//     where T: Parser
-// {
-//     type Output = T::Output;
-//     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-//         self.parse(content, consume, context)
-//     }
-// }
-
 // Regular Operations of DFAs:
 // union
 // concatenation
@@ -287,36 +278,41 @@ impl Parser for SimpleStrParser {
 // Complement (this doesn't seem useful so I'm not going to make this one, but keep it around)
 
 /// Concatenate two parsers, with a joiner `j`.
-pub fn concat<P1, P2, O, J>(p1: ParserRef<P1>, p2: ParserRef<P2>, j: Box<J>) -> CatParser<P1, P2, J>
+pub fn concat<P1, P2, O, J, T1, T2>(p1: T1, p2: T2, j: J) -> CatParser<P1, P2, J>
     where
+        T1: IntoParserRef<P1>,
+        T2: IntoParserRef<P2>,
         P1: Parser,
         P2: Parser,
         P1::Output: Hash + Eq + Clone,
         P2::Output: Hash + Eq + Clone,
         J: Fn(P1::Output, P2::Output) -> O {
     CatParser {
-        p1,
-        p2,
-        joiner: j
+        p1: p1.into(),
+        p2: p2.into(),
+        joiner: Box::new(j)
     }
 }
 
-pub fn union<P1, P2>(p1: ParserRef<P1>, p2: ParserRef<P2>) -> UnionParser<P1, P2>
-    where
-        P1: Parser,
-        P2: Parser {
+pub fn union<P1, P2, T1, T2>(p1: T1, p2: T2) -> UnionParser<P1, P2>
+where
+    P1: Parser,
+    P2: Parser,
+    T1: IntoParserRef<P1>,
+    T2: IntoParserRef<P2> {
     UnionParser {
-        p1,
-        p2
+        p1: p1.into(),
+        p2: p2.into()
     }
 }
 
-pub fn kleene<P>(p: ParserRef<P>) -> KleeneParser<P>
+pub fn kleene<P, T>(p: T) -> KleeneParser<P>
     where
-        P: Parser
+        P: Parser,
+        T: IntoParserRef<P>
 {
     KleeneParser {
-        p
+        p: p.into()
     }
 }
 
@@ -324,71 +320,28 @@ pub fn kleene<P>(p: ParserRef<P>) -> KleeneParser<P>
 // The following are all convenience functions
 ////////////////////////////////////////////////
 
-#[derive(Clone)]
-pub struct MappedParser<P, F, T>
+pub fn map<IP, P, F, T>(p: IP, f: F) -> MappedParser<P, F, T>
     where
-        P: Parser,
-        F: Fn(P::Output) -> T
-{
-    p: ParserRef<P>,
-    f: Box<F>
-}
-
-impl<P, F, T> Parser for MappedParser<P, F, T>
-    where
-        P: Parser,
-        F: Fn(P::Output) -> T,
-        P::Output: Hash + Eq,
-        T: Hash + Eq
-{
-    type Output = T;
-    fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        ParseResult(self.p.as_ref().borrow().parse(content, consume, context)).map_inner(&self.f).0
-    }
-}
-
-pub fn map<P, F, T>(p: ParserRef<P>, f: F) -> MappedParser<P, F, T>
-    where
+        IP: IntoParserRef<P>,
         P: Parser,
         F: Fn(P::Output) -> T
 {
     MappedParser {
-        p,
+        p: p.into(),
         f: Box::new(f)
     }
 }
 
-// pub fn map_union<P1, P2, F1, F2, T, X>(p: ParserRef<UnionParser<P1, P2>>, f_left: F1, f_right: F2) -> MappedParser<UnionParser<P1, P2>, dyn Fn(UnionResult<<P1 as Parser>::Output, <P2 as Parser>::Output>) -> T, T>
-// where
-//     P1: Parser,
-//     P2: Parser,
-//     P1::Output: Hash + Eq + Clone,
-//     P2::Output: Hash + Eq + Clone,
-//     F1: Into<Box<dyn Fn(P1::Output) -> T>>,
-//     F2: Into<Box<dyn Fn(P2::Output) -> T>>,
-// { // Fn(<UnionParser<P1, P2> as Parser>::Output) -> T {
-//     let b1 = f_left.into();
-//     let b2 = f_right.into();
-//     MappedParser {
-//         p,
-//         f: Box::new(move |u: UnionResult<_, _>| match u {
-//             UnionResult::Left(l) => b1(l),
-//             UnionResult::Right(r) => b2(r)
-//         })
-//     }
-// }
-
-type OptionalParser<P: Parser> = MappedParser<UnionParser<P, EpsilonParser>, fn(<UnionParser<P, EpsilonParser> as Parser>::Output) -> Option<P::Output>, Option<P::Output>>;
-
 /// Convenience for union with nothing, or "optional"
-pub fn optional<P>(p: ParserRef<P>) -> OptionalParser<P>
+pub fn optional<P, T>(p: T) -> OptionalParser<P>
     where
+        T: IntoParserRef<P>,
         P: Parser,
         P::Output: Hash + Eq + Clone
 {
     MappedParser {
         p: parser_ref(UnionParser {
-            p1: p,
+            p1: p.into(),
             p2: parser_ref(EpsilonParser)
         }),
         f: Box::new(|m| match m {
@@ -435,6 +388,51 @@ pub fn enclose_with2<P, O>(parser: ParserRef<P>, left: &String, right: &String) 
     whole_parser
 }
 
+#[derive(Clone)]
+pub struct MappedParser<P, F, T>
+    where
+        P: Parser,
+        F: Fn(P::Output) -> T
+{
+    p: ParserRef<P>,
+    f: Box<F>
+}
+
+impl<P, F, T> Parser for MappedParser<P, F, T>
+    where
+        P: Parser,
+        F: Fn(P::Output) -> T,
+        P::Output: Hash + Eq,
+        T: Hash + Eq
+{
+    type Output = T;
+    fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
+        ParseResult(self.p.as_ref().borrow().parse(content, consume, context)).map_inner(&self.f).0
+    }
+}
+
+pub fn map_union<P1, P2, F1, F2, T, X>(p: ParserRef<UnionParser<P1, P2>>, f_left: F1, f_right: F2) -> MappedParser<UnionParser<P1, P2>, dyn Fn(UnionResult<<P1 as Parser>::Output, <P2 as Parser>::Output>) -> T, T>
+where
+    P1: Parser,
+    P2: Parser,
+    P1::Output: Hash + Eq + Clone,
+    P2::Output: Hash + Eq + Clone,
+    F1: Fn(P1::Output) -> T,
+    F2: Fn(P2::Output) -> T,
+{ // Fn(<UnionParser<P1, P2> as Parser>::Output) -> T {
+    let b1 = Box::new(f_left);
+    let b2 = Box::right(f_right);
+    MappedParser {
+        p,
+        f: Box::new(move |u: UnionResult<_, _>| match u {
+            UnionResult::Left(l) => b1(l),
+            UnionResult::Right(r) => b2(r)
+        })
+    }
+}
+
+type OptionalParser<P: Parser> = MappedParser<UnionParser<P, EpsilonParser>, fn(<UnionParser<P, EpsilonParser> as Parser>::Output) -> Option<P::Output>, Option<P::Output>>;
+
 pub struct NoWidthParserFlag<P: Parser>(pub ParserRef<P>);
 impl<P: Parser> Parser for NoWidthParserFlag<P> {
     type Output = P::Output;
@@ -461,3 +459,24 @@ pub fn snd<U, V>(_u: U, v: V) -> V {
     v
 }
 
+pub trait IntoParserRef<T> {
+    fn into(self) -> ParserRef<T>;
+}
+
+impl<T> IntoParserRef<T> for ParserRef<T> {
+    fn into(self) -> ParserRef<T> {
+        self
+    }
+}
+
+impl<P: Parser> IntoParserRef<P> for &ParserRef<P> {
+    fn into(self) -> ParserRef<P> {
+        Rc::clone(self)
+    }
+}
+
+impl<P: Parser> IntoParserRef<P> for P {
+    fn into(self) -> ParserRef<P> {
+        parser_ref(self)
+    }
+}
