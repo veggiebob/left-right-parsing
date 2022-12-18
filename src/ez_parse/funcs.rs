@@ -411,7 +411,7 @@ impl<P, F, T> Parser for MappedParser<P, F, T>
     }
 }
 
-pub fn map_union<P1, P2, F1, F2, T, X>(p: ParserRef<UnionParser<P1, P2>>, f_left: F1, f_right: F2) -> MappedParser<UnionParser<P1, P2>, dyn Fn(UnionResult<<P1 as Parser>::Output, <P2 as Parser>::Output>) -> T, T>
+pub fn map_union<P1, P2, F1, F2, T, X>(p: ParserRef<UnionParser<P1, P2>>, f_left: F1, f_right: F2) -> MappedParser<UnionParser<P1, P2>, impl Fn(UnionResult<<P1 as Parser>::Output, <P2 as Parser>::Output>) -> T, T>
 where
     P1: Parser,
     P2: Parser,
@@ -421,7 +421,7 @@ where
     F2: Fn(P2::Output) -> T,
 { // Fn(<UnionParser<P1, P2> as Parser>::Output) -> T {
     let b1 = Box::new(f_left);
-    let b2 = Box::right(f_right);
+    let b2 = Box::new(f_right);
     MappedParser {
         p,
         f: Box::new(move |u: UnionResult<_, _>| match u {

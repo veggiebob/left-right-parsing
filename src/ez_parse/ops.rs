@@ -1,14 +1,19 @@
-use crate::ez_parse::funcs::{
-    concat, map, parser_ref, union, CatParser, IntoParserRef, MappedParser, ParserRef,
-    SimpleStrParser, UnionParser, UnionResult,
-};
+use crate::ez_parse::funcs::{concat, map, parser_ref, union, CatParser, IntoParserRef, MappedParser, ParserRef, SimpleStrParser, UnionParser, UnionResult, snd, fst};
 use crate::{ParseError, ParseMetaData, Parser};
 use std::collections::HashSet;
 use std::hash::Hash;
+use std::iter::TakeWhile;
 use std::ops::{Add, Div, Mul};
 use std::rc::Rc;
+use crate::parse::{LengthQualifier, TakeWhileParser};
 
 pub struct EZ<T>(pub T);
+
+impl<T: Clone> Clone for EZ<T> {
+    fn clone(&self) -> Self {
+        EZ(self.0.clone())
+    }
+}
 
 impl<P: Parser> EZ<P> {
     pub fn parse<T>(
@@ -123,6 +128,40 @@ where
     fn add(self, rhs: EZ<T>) -> Self::Output {
         let s = self.to_owned();
         EZ(concat(SimpleStrParser::new(&s), rhs.0, |_a, b| b))
+    }
+}
+
+// special codes! (using char)
+
+impl<T: Parser> Add<EZ<T>> for char
+where
+    T::Output: Hash + Eq + Clone
+{
+    type Output = EZ<CatParser<TakeWhileParser, EZ<T>, fn(String, T::Output) -> T::Output>>;
+    fn add(self, rhs: EZ<T>) -> Self::Output {
+        if self != ' ' {
+            panic!("Parser character cannot be \'{}\'.", self);
+        }
+        EZ(concat(
+            TakeWhileParser::whitespace(LengthQualifier::GEQ(0)),
+            rhs,
+                |_w, expr| expr))
+    }
+}
+
+impl<T: Parser> Add<char> for EZ<T>
+    where
+        T::Output: Hash + Eq + Clone
+{
+    type Output = EZ<CatParser<EZ<T>, TakeWhileParser, fn(T::Output, String) -> T::Output>>;
+    fn add(self, rhs: char) -> Self::Output {
+        if rhs != ' ' {
+            panic!("Parser character cannot be \'{}\'.", rhs);
+        }
+        EZ(concat(
+            self,
+            TakeWhileParser::whitespace(LengthQualifier::GEQ(0)),
+            |expr, _w| expr))
     }
 }
 

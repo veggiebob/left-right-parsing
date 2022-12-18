@@ -2,9 +2,10 @@ use crate::ez_parse::funcs::UnionResult::{Left, Right};
 use crate::ez_parse::funcs::{kleene, map, optional, parser_ref, FunctionParser, ParserRef, SimpleStrParser, concat, KleeneParser, CatParser, MappedParser, UnionParser, fst};
 use crate::ez_parse::ops::EZ;
 use crate::lang_obj::{Expr, ParseError};
-use crate::parse::{LONatParser, LOStringParser, NatParser, StringParser};
+use crate::parse::{LengthQualifier, LONatParser, LOStringParser, NatParser, StringParser, TakeWhileParser};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::iter::TakeWhile;
 use std::rc::Rc;
 
 /*
@@ -58,9 +59,9 @@ fn json_parser() {
     let parser = FunctionParser::<JSON>::placeholder::<JSON>();
 
     // parse objects (collect data)
-    let O = "{"
-        + EZ(kleene(EZ(S.clone()) + ":" + &parser + ","))
-        + EZ(optional(EZ(S.clone()) + ":" + &parser))
+    let O = "{" + (' '
+        + EZ(kleene(EZ(S.clone()) + ' ' + ":" + ' ' + &parser + ' ' + "," + ' ')))
+        + EZ(optional(EZ(S.clone()) + ' ' + ":" + ' ' + &parser)) + ' '
         + "}";
 
     // ...map this to the correct type; (Vec<JSON>, Option<JSON>) -> JSON
@@ -76,15 +77,15 @@ fn json_parser() {
     });
 
     // parse arrays
-    let expr_comma = map(&parser + EZ(SimpleStrParser::from(",")), fst);
+    let expr_comma = concat(&parser, (' ' + EZ(SimpleStrParser::from(",")) + ' '), fst);
     let list_expr = kleene(parser_ref(expr_comma));
-    let opt_last_element = optional(&parser);
-    let A = "[" + EZ(concat(list_expr, opt_last_element, Box::new(|mut xs: Vec<JSON>, vs| {
+    let opt_last_element = ' ' + EZ(optional(&parser));
+    let A = "[" + (' ' + EZ(concat(list_expr, opt_last_element, |mut xs: Vec<JSON>, vs| {
         if let Some(x) = vs {
             xs.push(x);
         }
         JSON::Array(xs)
-    }))) + "]"; // finish array implementation
+    }))) + ' ' + "]"; // finish array implementation
 
     // combine all the parsers together
     // "string parser" OR "number parser" OR "boolean parser" OR ...
@@ -101,6 +102,6 @@ fn json_parser() {
     });
 
     let parser = P.borrow();
-    let res: Result<HashSet<(JSON, _)>, _> = parser.parse_all("{\"key1\":1,\"key2\":{},\"key3\":[1,2,{}]}");
+    let res: Result<HashSet<(JSON, _)>, _> = parser.parse_all("{ \"key1\" : 1,\"key2\": { },\"key3\":[ 1, 2, {} ] }");
     println!("{:?}", res);
 }
