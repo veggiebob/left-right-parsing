@@ -2,6 +2,7 @@ use core::convert::From;
 use core::option::Option;
 use core::option::Option::None;
 use std::collections::HashSet;
+use crate::interpret::ImportStatement;
 use crate::lang_obj::Identifier::Unit;
 use crate::parse::{ParseMetaData, Parser};
 
@@ -104,9 +105,13 @@ impl From<LONat> for Expr {
 }
 
 
-pub type IdentifierType = String;
+// how an identifier for a type is represented
+pub type TypeIdentifier = String;
 
 pub type WhereClause = Box<Vec<Statement>>;
+
+
+pub type FunctionSignature = (Box<Vec<(Identifier, TypeIdentifier)>>, TypeIdentifier);
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Program {
@@ -116,14 +121,20 @@ pub struct Program {
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
 pub enum Statement {
 
-    /// let expression
-    // proposed syntax: let <identifier> = <expression>;
+    /// let statement
+    /// proposed syntax: let <identifier> = <expression>
     Let(Identifier, Expr),
 
     /// function definition
-    // (name, arguments, body, where-clause)
-    FnDef(String, Vec<(Identifier, IdentifierType)>, Expr, WhereClause),
+    /// (name, arguments, body, where-clause)
+    Lambda(String, Vec<(Identifier, TypeIdentifier)>, Expr, WhereClause),
 
+    /// function using a list of statements, and a return statement
+    /// (name, (arguments, return), body, return-statement)
+    FnDef(String, FunctionSignature, Box<Vec<Statement>>, Expr),
+
+    /// imports!
+    Import(ImportStatement)
 }
 
 /// An identifier is a way of representing the result of an expression or a value
@@ -150,7 +161,7 @@ impl ToString for Statement {
     fn to_string(&self) -> String {
         match self {
             Statement::Let(ident, expr) => format!("let {} = {}", ident.to_string(), expr.to_string()),
-            Statement::FnDef(name, args, expr, wheres) => {
+            Statement::Lambda(name, args, expr, wheres) => {
                 format!("function {} ({}) => {}{}",
                     name,
                     args.iter().map(|(ident, ident_type)| {
@@ -165,7 +176,8 @@ impl ToString for Statement {
                             "}")
                         } else { "".to_string() }
                 )
-            }
+            },
+            _ => todo!("missing case for ToString of Statement")
         }
     }
 }

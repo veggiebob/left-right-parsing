@@ -35,6 +35,10 @@ enum JSON {
     Array(Vec<JSON>),
 }
 
+fn empty_obj() -> JSON {
+    JSON::Object(BTreeMap::new())
+}
+
 #[test]
 fn json_parser() {
     // parse strings
@@ -102,6 +106,11 @@ fn json_parser() {
     });
 
     let parser = P.borrow();
-    let res: Result<HashSet<(JSON, _)>, _> = parser.parse_all("{ \"key1\" : 1,\"key2\": { },\"key3\":[ 1, 2, {} ] }");
-    println!("{:?}", res);
+    let res: Result<HashSet<(JSON, _)>, _> = parser.parse_all("{ \"key1\" : 1 ,\"key2\": { },\"key3\":[ 1, 2, {} ] }");
+    assert_eq!(res, Ok(hashset!{(
+        JSON::Object(btreemap!{
+            "key1".to_string() => JSON::Num(1),
+            "key2".to_string() => empty_obj(),
+            "key3".to_string() => JSON::Array(vec![JSON::Num(1), JSON::Num(2), empty_obj()])}),
+        47)}));
 }

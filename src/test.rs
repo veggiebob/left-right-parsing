@@ -11,7 +11,7 @@ use crate::lang_obj::Expr::{Conditional, Infix, List, Nat, Str, Variable};
 use crate::lang_obj::formatting::{Format, JSON};
 use crate::lang_obj::Identifier::Unit;
 use crate::lang_obj::Statement;
-use crate::lang_obj::Statement::{FnDef, Let};
+use crate::lang_obj::Statement::{Lambda, Let};
 use crate::parse::{chainable, ConditionalParser, LengthQualifier, ListParser, ParseMetaData, Parser, ParseResult, TakeWhileParser};
 use crate::parse::{ExprParser, GenericExprParser, InfixParser, LONatParser, ParentheticalParser, LOStringParser};
 use crate::parse::LengthQualifier::LEQ;
@@ -1053,7 +1053,7 @@ fn fn_def_parse_test() {
         fn_parser.parse(&test, true, context.clone()),
         Ok(hashset!{
             (
-                FnDef(
+                Lambda(
                     "fn_name".into(),
                     vec![
                         (Unit("var_a".into()), "nice".into()),
@@ -1076,7 +1076,7 @@ fn fn_def_parse_test() {
         fn_parser.parse(&test, true, context.clone()),
         Ok(hashset!{
             (
-                FnDef(
+                Lambda(
                     "fn_name".to_string(),
                     vec![
                         (Unit("var_a".into()), "nice".to_string()),
@@ -1097,7 +1097,7 @@ fn fn_def_parse_test() {
         fn_parser.parse(&test, true, context.clone()),
         Ok(hashset!{
             (
-                FnDef(
+                Lambda(
                     "fn_names".to_string(),
                     vec![
                         (Unit("var_a".into()), "nice".to_string()),
@@ -1125,7 +1125,7 @@ fn fn_def_parse_test() {
         fn_parser.parse(&test, true, context.clone()),
         Ok(hashset!{
             (
-                FnDef("fn_name".into(), vec![(Unit("var_a".into()), "nice".into())], Nat(LONat { content: 32 }), vec![].into()), 37)})
+                Lambda("fn_name".into(), vec![(Unit("var_a".into()), "nice".into())], Nat(LONat { content: 32 }), vec![].into()), 37)})
     );
 
     let test = "fn_name[var_a : nice] => 32 where {\
@@ -1136,7 +1136,7 @@ fn fn_def_parse_test() {
 
     assert_eq!(
         fn_parser.parse(&test, true, context.clone()),
-        Ok(hashset!{(FnDef("fn_name".into(), vec![(Unit("var_a".into()), "nice".into())],
+        Ok(hashset!{(Lambda("fn_name".into(), vec![(Unit("var_a".into()), "nice".into())],
             Nat(LONat { content: 32 }), vec![Let(Unit("x".into()), Nat(LONat { content: 5 }))].into()), 45)})
     );
 
@@ -1149,12 +1149,12 @@ fn fn_def_parse_test() {
 
     assert_eq!(
         fn_parser.parse(&test, true, context.clone()),
-        Ok(hashset!{(FnDef(
+        Ok(hashset!{(Lambda(
             "fn_name".into(),
             vec![(Unit("var_a".into()), "nice".into())],
             Nat(LONat { content: 32 }),
             vec![
-                FnDef(
+                Lambda(
                     "y".into(),
                     vec![(Unit("x".into()), "nat".into())],
                     Str(LOString { content: "hello world".into() }),
@@ -1186,7 +1186,7 @@ fn omega_gigachad_function_test() {
             Ok(
                 hashset! {
                     (
-                        FnDef(
+                        Lambda(
                             "factorial".to_string(),
                             vec![
                                 (
@@ -1210,7 +1210,7 @@ fn omega_gigachad_function_test() {
                                 ).into(),
                             ),
                             vec![
-                                FnDef(
+                                Lambda(
                                     "go".into(),
                                     vec![
                                         (
@@ -1275,7 +1275,7 @@ fn omega_gigachad_function_test() {
             Ok(
                 hashset! {
                     (
-                        FnDef(
+                        Lambda(
                             "factorial".into(),
                             vec![
                                 (
@@ -1319,7 +1319,7 @@ fn omega_gigachad_function_test() {
                                 ).into(),
                             ),
                             vec![
-                                FnDef(
+                                Lambda(
                                     "go".into(),
                                     vec![
                                         (
@@ -1377,7 +1377,7 @@ fn omega_gigachad_function_test() {
             parser.parse(&test, false, ParseMetaData::new()),
             Ok(hashset![
                 (
-                    FnDef(
+                    Lambda(
                         "f".into(),
                         vec![],
                         List(vec![]),

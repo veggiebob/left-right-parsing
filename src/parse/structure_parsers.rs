@@ -2,10 +2,10 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 use crate::funcs::{expect_str, expect_with_used, take, take_while};
-use crate::lang_obj::{Expr, Identifier, ParseError, Statement, IdentifierType, WhereClause};
+use crate::lang_obj::{Expr, Identifier, ParseError, Statement, TypeIdentifier, WhereClause};
 use crate::lang_obj::Expr::Variable;
 use crate::lang_obj::Identifier::Unit;
-use crate::lang_obj::Statement::FnDef;
+use crate::lang_obj::Statement::Lambda;
 use crate::parse::{chainable, ExprParser, LengthQualifier, ListParser, ParseMetaData, Parser, ParseResult, TakeWhileParser};
 
 pub struct IdentifierParser {
@@ -195,13 +195,13 @@ impl Parser for LetParser {
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
 struct BaseFnDef {
     pub name: String,
-    pub args: Vec<(Identifier, IdentifierType)>,
+    pub args: Vec<(Identifier, TypeIdentifier)>,
     pub expr: Expr,
     pub where_clause: WhereClause
 }
 impl From<BaseFnDef> for Statement {
     fn from(stmt: BaseFnDef) -> Self {
-        Statement::FnDef(
+        Statement::Lambda(
             stmt.name,
             stmt.args,
             stmt.expr,

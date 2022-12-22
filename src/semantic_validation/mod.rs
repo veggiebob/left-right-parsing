@@ -57,6 +57,8 @@ impl ScopeFrame {
     }
 }
 
+// Semantic Validators (checks to see if the AST makes sense)
+
 pub struct ProgramValidator;
 
 /// evaluates whether or not
@@ -77,7 +79,7 @@ impl Validator<Program> for ProgramValidator {
             // this is a special case, mostly we just want to validate
             if let Statement::Let(ident, _expr) = s {
                 scope_frame.add_global(ident.clone()).unwrap();
-            } else if let Statement::FnDef(name, _, _, _) = s {
+            } else if let Statement::Lambda(name, _, _, _) = s {
                 scope_frame.add_global(Identifier::Unit(name.clone())).unwrap();
             }
         }
@@ -93,7 +95,7 @@ impl Validator<Statement> for StatementValidator {
         if let Statement::Let(ident, expr) = structure {
             let expr_validator = ExpressionValidator(self.0.transfer_with(hashset![ident.clone()]));
             expr_validator.validate(expr)
-        } else if let Statement::FnDef(name, args, expr, wheres) = structure {
+        } else if let Statement::Lambda(name, args, expr, wheres) = structure {
             let mut new_f_idents: HashSet<Identifier> = args.iter().map(|(ident, _type)| ident.clone()).collect();
             new_f_idents.extend(vec![Identifier::Unit(name.clone())]); // add the function name (for recursion)
 
@@ -105,7 +107,8 @@ impl Validator<Statement> for StatementValidator {
                 .map(|stmt| {
                     match stmt {
                         Statement::Let(ident, _) => ident.clone(),
-                        Statement::FnDef(name, _, _, _) => Identifier::Unit(name.clone())
+                        Statement::Lambda(name, _, _, _) => Identifier::Unit(name.clone()),
+                        _ => todo!("Missing case for Validator<Statement> for StatementValidator")
                     }
                 })
                 .for_each(|ident| {

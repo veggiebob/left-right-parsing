@@ -147,7 +147,7 @@ impl Format<Statement> for HTML {
                         self.format(expr)
                     )
                 },
-                Statement::FnDef(name, args, body, wheres) => {
+                Statement::Lambda(name, args, body, wheres) => {
                     format!(
                         "{} {} = ({}) => {} {} {} {} {}",
                         html_color("let", "orange"),
@@ -168,7 +168,8 @@ impl Format<Statement> for HTML {
                             .join(" "),
                         html_color("}", "grey")
                     )
-                }
+                },
+                _ => todo!("missing case for Format<Statement> for HTML")
             },
             gen: &self
         }
@@ -243,7 +244,7 @@ impl Format<Statement> for JSON {
                     self.format(expr),
                     "}"
                 ),
-            Statement::FnDef(name, args, body, wheres) => {
+            Statement::Lambda(name, args, body, wheres) => {
                 format!(
                     "{}\"name\":{},\"args\":{},\"expr\":{},\"defs\":{}{}",
                     "{",
@@ -264,7 +265,8 @@ impl Format<Statement> for JSON {
                     self.from_vec(wheres.iter().map(|x| self.format(x)).collect()),
                     "}"
                 )
-            }
+            },
+            _ => todo!("Missing case for Format<Statement> for JSON")
         };
         Text {
             content,
