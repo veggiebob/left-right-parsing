@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use std::ops::Add;
 use crate::{Expr, Statement};
-use crate::lang_obj::{Identifier, LONat, LOString, Program};
+use crate::lang_obj::{Identifier, LONat, LOString, Program, TypeIdentifier};
 
 pub trait Format<E> {
     fn format(&self, ast: &E) -> Text<Self> where Self: Sized;
@@ -104,10 +104,6 @@ impl Format<Expr> for HTML {
                         gen: self
                     }
                 },
-                Expr::Func(_, _) => {
-                    // aaaaa why is this here
-                    todo!("Welp, this is not implemented")
-                }
                 Expr::Variable(ident) => self.format(ident),
                 Expr::Conditional(cond, then, then_else) => {
                     Text {
@@ -125,6 +121,35 @@ impl Format<Expr> for HTML {
                         ),
                         gen: self
                     }
+                },
+                Expr::Function(name, (args, retT), body, ret) => {
+                    // Statement::FnDef(name, args, body, wheres) => {
+                    // format!(
+                    //     "{} {} = ({}) => {} {} {} {} {}",
+                    //     html_color("let", "orange"),
+                    //     name,
+                    //     args.into_iter()
+                    //         .map(|(ident, i_type)| {
+                    //             format!("{} {}",
+                    //                     html_color(&i_type.unwrap_or("Any".into()), "#ff0"),
+                    //                     &self.format(&ident).content)
+                    //         })
+                    //         .collect::<Vec<_>>()
+                    //         .join(", "),
+                    //     self.format(body),
+                    //     html_color("where", "orange"),
+                    //     html_color("{", "grey"),
+                    //     wheres.iter()
+                    //         .map(|e| self.format(e))
+                    //         .map(|t| t.content)
+                    //         .collect::<Vec<_>>()
+                    //         .join(" "),
+                    //     html_color("}", "grey")
+                    // )
+                    todo!("No impl for Format<Expr::Function> for HTML")
+                },
+                Expr::Lambda(..) => {
+                    todo!("No impl for Format<Expr::Lambda> for HTML")
                 }
             }
         );
@@ -145,28 +170,6 @@ impl Format<Statement> for HTML {
                         "<span style=\"color:orange\">let</span> {} = {};",
                         self.format(ident),
                         self.format(expr)
-                    )
-                },
-                Statement::Lambda(name, args, body, wheres) => {
-                    format!(
-                        "{} {} = ({}) => {} {} {} {} {}",
-                        html_color("let", "orange"),
-                        name,
-                        args.into_iter()
-                            .map(|(ident, i_type)| {
-                                format!("{} {}", html_color(&i_type, "#ff0"), &self.format(ident).content)
-                            })
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                        self.format(body),
-                        html_color("where", "orange"),
-                        html_color("{", "grey"),
-                        wheres.iter()
-                            .map(|e| self.format(e))
-                            .map(|t| t.content)
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                        html_color("}", "grey")
                     )
                 },
                 _ => todo!("missing case for Format<Statement> for HTML")
@@ -211,9 +214,6 @@ impl Format<Expr> for JSON {
             Expr::List(xs) => {
                 self.from_vec(xs.iter().map(|x| self.format(x.as_ref())).collect()).content
             },
-            Expr::Func(_, _) => {
-                todo!("deprecated?")
-            },
             Expr::Variable(i) => quote(i.to_string()),
             Expr::Conditional(cond, then, then_else) => {
                 format!(
@@ -224,6 +224,12 @@ impl Format<Expr> for JSON {
                     self.format(then_else.as_ref()),
                     "}"
                 )
+            },
+            Expr::Function(..) => {
+                todo!("No JSON format for Expr::Function. See old impl of Format<Statement> for JSON")
+            },
+            Expr::Lambda(..) => {
+                todo!("No JSON format for Expr::Lambda. See old impl of Format<Statement> for JSON")
             }
         };
         Text {
@@ -244,28 +250,28 @@ impl Format<Statement> for JSON {
                     self.format(expr),
                     "}"
                 ),
-            Statement::Lambda(name, args, body, wheres) => {
-                format!(
-                    "{}\"name\":{},\"args\":{},\"expr\":{},\"defs\":{}{}",
-                    "{",
-                    quote(name.clone()),
-                    {
-                        let xs = args.into_iter().map(|(ident, it)|
-                            format!(
-                                "{}\"identifier\":{},\"type\":{}{}",
-                                "{",
-                                quote(ident.to_string()),
-                                quote(it.to_string()),
-                                "}"
-                            )
-                        ).collect::<Vec<_>>();
-                        self.from_vec(xs)
-                    },
-                    self.format(body),
-                    self.from_vec(wheres.iter().map(|x| self.format(x)).collect()),
-                    "}"
-                )
-            },
+            // Statement::FnDef(name, args, body, wheres) => {
+            //     format!(
+            //         "{}\"name\":{},\"args\":{},\"expr\":{},\"defs\":{}{}",
+            //         "{",
+            //         quote(name.clone()),
+            //         {
+            //             let xs = args.into_iter().map(|(ident, it)|
+            //                 format!(
+            //                     "{}\"identifier\":{},\"type\":{}{}",
+            //                     "{",
+            //                     quote(ident.to_string()),
+            //                     quote(it.to_string()),
+            //                     "}"
+            //                 )
+            //             ).collect::<Vec<_>>();
+            //             self.from_vec(xs)
+            //         },
+            //         self.format(body),
+            //         self.from_vec(wheres.iter().map(|x| self.format(x)).collect()),
+            //         "}"
+            //     )
+            // },
             _ => todo!("Missing case for Format<Statement> for JSON")
         };
         Text {

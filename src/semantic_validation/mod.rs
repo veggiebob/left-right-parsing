@@ -79,9 +79,10 @@ impl Validator<Program> for ProgramValidator {
             // this is a special case, mostly we just want to validate
             if let Statement::Let(ident, _expr) = s {
                 scope_frame.add_global(ident.clone()).unwrap();
-            } else if let Statement::Lambda(name, _, _, _) = s {
-                scope_frame.add_global(Identifier::Unit(name.clone())).unwrap();
             }
+            // else if let Statement::FnDef(name, _, _, _) = s {
+            //     scope_frame.add_global(Identifier::Unit(name.clone())).unwrap();
+            // }
         }
         for s in structure.content.iter() {
             StatementValidator(scope_frame.new_with(hashset![])).validate(s)?;
@@ -95,37 +96,40 @@ impl Validator<Statement> for StatementValidator {
         if let Statement::Let(ident, expr) = structure {
             let expr_validator = ExpressionValidator(self.0.transfer_with(hashset![ident.clone()]));
             expr_validator.validate(expr)
-        } else if let Statement::Lambda(name, args, expr, wheres) = structure {
-            let mut new_f_idents: HashSet<Identifier> = args.iter().map(|(ident, _type)| ident.clone()).collect();
-            new_f_idents.extend(vec![Identifier::Unit(name.clone())]); // add the function name (for recursion)
-
-            // start the new scope with function name and argument identifiers
-            let mut func_scope = self.0.new_with(new_f_idents);
-
-            // we gonna need the where-idents
-            wheres.iter()
-                .map(|stmt| {
-                    match stmt {
-                        Statement::Let(ident, _) => ident.clone(),
-                        Statement::Lambda(name, _, _, _) => Identifier::Unit(name.clone()),
-                        _ => todo!("Missing case for Validator<Statement> for StatementValidator")
-                    }
-                })
-                .for_each(|ident| {
-                    func_scope.add(ident);
-                });
-
-            // first, let the statements be evaluated.
-            let stmt_validator = StatementValidator(func_scope.clone());
-            for stmt in wheres.iter() {
-                stmt_validator.validate(stmt)?;
-            }
-
-            // now validate the expression
-            let expr_validator = ExpressionValidator(func_scope.clone());
-            expr_validator.validate(expr)
-
-        } else {
+        }
+        // else if let Statement::FnDef(name, args, expr, wheres) = structure {
+        //     let mut new_f_idents: HashSet<Identifier> = args.iter().map(|(ident, _type)| ident.clone()).collect();
+        //     new_f_idents.extend(vec![Identifier::Unit(name.clone())]); // add the function name (for recursion)
+        //
+        //     // start the new scope with function name and argument identifiers
+        //     let mut func_scope = self.0.new_with(new_f_idents);
+        //
+        //     // we gonna need the where-idents
+        //     wheres.iter()
+        //         .map(|stmt| {
+        //             match stmt {
+        //                 Statement::Let(ident, _) => ident.clone(),
+        //                 Statement::FnDef(name, _, _, _) => Identifier::Unit(name.clone()),
+        //                 _ => todo!("Missing case for Validator<Statement> for StatementValidator")
+        //             }
+        //         })
+        //         .for_each(|ident| {
+        //             func_scope.add(ident);
+        //         });
+        //
+        //     // first, let the statements be evaluated.
+        //     let stmt_validator = StatementValidator(func_scope.clone());
+        //     for stmt in wheres.iter() {
+        //         stmt_validator.validate(stmt)?;
+        //     }
+        //
+        //     // now validate the expression
+        //     let expr_validator = ExpressionValidator(func_scope.clone());
+        //     expr_validator.validate(expr)
+        //
+        // }
+        else {
+            println!("warning: incomplete validation");
             Ok(()) // ???
         }
     }
@@ -146,7 +150,6 @@ impl Validator<Expr> for ExpressionValidator {
                 }
                 Ok(())
             },
-            Expr::Func(_, _) => todo!(),
             Expr::Variable(ident) => {
                 // finally!
                 if self.0.exists(ident) {
@@ -159,6 +162,12 @@ impl Validator<Expr> for ExpressionValidator {
                 self.validate(cond)?;
                 self.validate(then)?;
                 self.validate(then_else)
+            },
+            Expr::Function(..) => {
+                todo!("expression validator for Expr::Function!")
+            },
+            Expr::Lambda(..) => {
+                todo!("expression validator for Expr::Lambda!")
             }
         }
     }

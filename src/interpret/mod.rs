@@ -1,7 +1,8 @@
 use std::borrow::{Borrow, BorrowMut};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use crate::interpret::definitions::{HeapData, ProgramData, StackData, StackFrame};
-use crate::lang_obj::{Identifier, Program, Statement};
+use crate::lang_obj::{Expr, Identifier, Program, Statement};
 
 pub mod definitions;
 
@@ -73,9 +74,18 @@ impl Interpreter {
     fn interpret(&mut self, statements: &Vec<Statement>) {
         for stmt in statements {
             match stmt {
-                Statement::Import(_) => todo!("can't import things yet"),
-                Statement::Lambda(name, x, y, z) => todo!(),
-                _ => todo!()
+                Statement::Import(imt) => {
+                    todo!("interpret import statement!")
+                },
+                Statement::Impure(expr) => {
+                    todo!("interpret impure expression!")
+                }
+                Statement::Assignment(ident, expr) => {
+                    todo!("interpret assignment!");
+                }
+                Statement::Let(ident, expr) => {
+                    todo!("interpret let!");
+                },
             }
         }
     }

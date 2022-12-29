@@ -18,6 +18,8 @@ pub struct LONat {
     pub content: u64
 }
 
+pub type FunctionSignature = (Box<Vec<(Identifier, Option<TypeIdentifier>)>>, Option<TypeIdentifier>);
+
 #[derive(Eq, PartialEq, Debug, Hash, Clone)]
 pub enum Expr {
 
@@ -48,7 +50,7 @@ pub enum Expr {
     // this should be implemented in the future, but for now I'll just use an infix
     // operator to symbolize function calls. It's easier that way.
     // Something like "func_name $ [arg1, arg2]"
-    Func(Identifier, Box<Expr>),
+    // FuncCall(Identifier, Box<Expr>),
 
     /// Any other symbol that would be used to identify a local variable
     Variable(Identifier),
@@ -56,7 +58,15 @@ pub enum Expr {
     /// Represents an If-else style conditional
     // syntax:
     // if\s*<condition expr>\s*<true expr>\s*else\s*<false expr>
-    Conditional(Box<Expr>, Box<Expr>, Box<Expr>)
+    Conditional(Box<Expr>, Box<Expr>, Box<Expr>),
+
+    /// May be impure
+    /// name, signature, body, return
+    Function(String, FunctionSignature, Vec<Box<Statement>>, Box<Expr>),
+
+    /// Pure (and should be guaranteed to!)
+    /// name, signature, return
+    Lambda(String, FunctionSignature, Box<Expr>)
 }
 
 #[derive(Eq, PartialEq, Debug, Clone)]
@@ -108,11 +118,6 @@ impl From<LONat> for Expr {
 // how an identifier for a type is represented
 pub type TypeIdentifier = String;
 
-pub type WhereClause = Box<Vec<Statement>>;
-
-
-pub type FunctionSignature = (Box<Vec<(Identifier, TypeIdentifier)>>, TypeIdentifier);
-
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Program {
     pub content: Vec<Statement>
@@ -125,13 +130,12 @@ pub enum Statement {
     /// proposed syntax: let <identifier> = <expression>
     Let(Identifier, Expr),
 
-    /// function definition
-    /// (name, arguments, body, where-clause)
-    Lambda(String, Vec<(Identifier, TypeIdentifier)>, Expr, WhereClause),
+    /// assignment exactly as you would expect
+    Assignment(Identifier, Expr),
 
-    /// function using a list of statements, and a return statement
-    /// (name, (arguments, return), body, return-statement)
-    FnDef(String, FunctionSignature, Box<Vec<Statement>>, Expr),
+    /// "Run" an expression. This assumes that computing
+    /// the expression will mutate some variables.
+    Impure(Expr),
 
     /// imports!
     Import(ImportStatement)
@@ -161,22 +165,22 @@ impl ToString for Statement {
     fn to_string(&self) -> String {
         match self {
             Statement::Let(ident, expr) => format!("let {} = {}", ident.to_string(), expr.to_string()),
-            Statement::Lambda(name, args, expr, wheres) => {
-                format!("function {} ({}) => {}{}",
-                    name,
-                    args.iter().map(|(ident, ident_type)| {
-                        format!("{}: {}", ident.to_string(), ident_type)
-                    }).collect::<Vec<_>>().join(", "),
-                    expr.to_string(),
-                        if wheres.len() > 0 {
-                            format!(" where {} {} {}",
-                            "{",
-                            wheres.iter().map(ToString::to_string)
-                                .collect::<Vec<_>>().join("\n"),
-                            "}")
-                        } else { "".to_string() }
-                )
-            },
+            // Statement::FnDef(name, args, expr, wheres) => {
+            //     format!("function {} ({}) => {}{}",
+            //         name,
+            //         args.iter().map(|(ident, ident_type)| {
+            //             format!("{}: {}", ident.to_string(), ident_type)
+            //         }).collect::<Vec<_>>().join(", "),
+            //         expr.to_string(),
+            //             if wheres.len() > 0 {
+            //                 format!(" where {} {} {}",
+            //                 "{",
+            //                 wheres.iter().map(ToString::to_string)
+            //                     .collect::<Vec<_>>().join("\n"),
+            //                 "}")
+            //             } else { "".to_string() }
+            //     )
+            // },
             _ => todo!("missing case for ToString of Statement")
         }
     }
@@ -193,9 +197,6 @@ impl ToString for Expr {
             Expr::List(xs) => {
                 format!("[{}]", xs.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(", "))
             }
-            Expr::Func(rator, rand) => {
-                todo!("Function syntax")
-            }
             Expr::Variable(x) => x.to_string(),
             Expr::Conditional(cond, then, then_else) => {
                 format!("if ({}) {} {} {} else {} {} {}",
@@ -205,6 +206,12 @@ impl ToString for Expr {
                             then_else.to_string(),
                         "}"
                 )
+            }
+            Expr::Function(..) => {
+                format!("<expression function>")
+            },
+            Expr::Lambda(..) => {
+                format!("<lambda function>")
             }
         }
     }

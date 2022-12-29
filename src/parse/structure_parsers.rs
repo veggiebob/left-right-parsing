@@ -2,10 +2,9 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 use crate::funcs::{expect_str, expect_with_used, take, take_while};
-use crate::lang_obj::{Expr, Identifier, ParseError, Statement, TypeIdentifier, WhereClause};
+use crate::lang_obj::{Expr, Identifier, ParseError, Statement, TypeIdentifier};
 use crate::lang_obj::Expr::Variable;
 use crate::lang_obj::Identifier::Unit;
-use crate::lang_obj::Statement::Lambda;
 use crate::parse::{chainable, ExprParser, LengthQualifier, ListParser, ParseMetaData, Parser, ParseResult, TakeWhileParser};
 
 pub struct IdentifierParser {
@@ -192,6 +191,8 @@ impl Parser for LetParser {
     }
 }
 
+pub type WhereClause = Vec<Box<Statement>>;
+
 #[derive(Clone, Eq, PartialEq, Debug, Hash)]
 struct BaseFnDef {
     pub name: String,
@@ -201,11 +202,11 @@ struct BaseFnDef {
 }
 impl From<BaseFnDef> for Statement {
     fn from(stmt: BaseFnDef) -> Self {
-        Statement::Lambda(
+        Statement::Let(Unit(stmt.name.clone()), Expr::Function(
             stmt.name,
-            stmt.args,
-            stmt.expr,
-            stmt.where_clause
+            (Box::new(stmt.args.into_iter().map(|(a, b)| (a, Some(b))).collect()), None),
+            stmt.where_clause,
+            stmt.expr.into())
         )
     }
 }
@@ -231,7 +232,7 @@ impl FnDefParser {
                         name,
                         args,
                         expr,
-                        where_clause: Box::new(vec![]) // empty where-clause for now
+                        where_clause: vec![] // empty where-clause for now
                     }
                 )
             } else {
@@ -371,9 +372,9 @@ impl Parser for FnDefParser {
                                     args: fndef.args,
                                     expr: fndef.expr,
                                     where_clause: {
-                                        let mut stmts = vec![stmt];
-                                        stmts.extend(*fndef.where_clause);
-                                        Box::new(stmts)
+                                        let mut stmts = vec![Box::new(stmt)];
+                                        stmts.extend(fndef.where_clause);
+                                        stmts
                                     }
                                 }
                             }

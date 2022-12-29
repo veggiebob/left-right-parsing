@@ -22,8 +22,6 @@ pub mod funcs;
 pub mod semantic_validation;
 pub mod interpret;
 
-#[cfg(test)]
-pub mod test;
 pub mod templates;
 
 fn input() -> String {
