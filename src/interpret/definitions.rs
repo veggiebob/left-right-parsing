@@ -1,7 +1,7 @@
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
-use crate::lang_obj::{Expr, Identifier, TypeIdentifier};
+use crate::lang_obj::{Expr, Identifier, Statement, TypeIdentifier};
 
 /// These are the classes of objects that are stored during runtime
 /// a couple arbitrary types will be included for convenience.
@@ -9,7 +9,8 @@ use crate::lang_obj::{Expr, Identifier, TypeIdentifier};
 pub enum Term {
     /// "primitives"
     String(String),
-    Nat(u64),
+    Nat(u64), // natural unsigned integer
+    Float(f64),
     Token(String), // mm hmm heheh?
 
     /// user types
@@ -36,13 +37,17 @@ pub struct HeapData {
 }
 
 pub struct StackFrame {
-    pub data: HashMap<Identifier, RefCell<Term>>
+    pub data: HashMap<Identifier, RefCell<Term>>,
+    pub return_value: Option<Term>
 }
 
 pub struct StackData(pub(crate) Vec<StackFrame>);
 
+///////////////////// types and the objects that hold their data //////////////////////////////////
+
 /// the type of type (kind)
 pub enum Kind {
+    Unit(TypeIdentifier),
     Product(ProductType),
     Sum(SumType),
     Enum(EnumType)
@@ -50,6 +55,7 @@ pub enum Kind {
 
 /// parallel to Kind, but containing data
 pub enum LanguageObject {
+    Of(Term),
     Product(ProductObject),
     Sum(SumObject),
     Enum(EnumObject),
@@ -114,3 +120,19 @@ pub struct EnumType {
 }
 
 pub struct EnumObject(pub Identifier, pub ProductObject);
+
+impl Term {
+    pub fn get_type(&self) -> Kind {
+        match self {
+            Term::String(_) => Kind::Unit("string".to_string()),
+            Term::Nat(_) => Kind::Unit("nat".to_string()),
+            Term::Float(_) => Kind::Unit("float".to_string()),
+            Term::Token(t) => Kind::Unit(t.clone()), // should a token be its own type??
+            Term::Object(o) => {
+                todo!()
+            },
+            Term::HeapPointer(_) => todo!(),
+            Term::StackPointer(_) => todo!()
+        }
+    }
+}

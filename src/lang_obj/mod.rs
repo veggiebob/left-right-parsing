@@ -2,6 +2,7 @@ use core::convert::From;
 use core::option::Option;
 use core::option::Option::None;
 use std::collections::HashSet;
+use crate::interpret::definitions::Term;
 use crate::interpret::ImportStatement;
 use crate::lang_obj::Identifier::Unit;
 use crate::parse::{ParseMetaData, Parser};
@@ -135,10 +136,19 @@ pub enum Statement {
 
     /// "Run" an expression. This assumes that computing
     /// the expression will mutate some variables.
+    /// Example: print(3)
     Impure(Expr),
 
     /// imports!
-    Import(ImportStatement)
+    Import(ImportStatement),
+
+    /// return
+    /// this is a SPECIAL case because it is *not parsed*
+    /// it is, in fact, *only* used by the interpreter to represent
+    /// a value that needs to be transferred out of the current StackFrame
+    /// and into the one below it, to fit the value of an Expr.
+    /// However, it takes an Expr because the actual value cannot be known ahead of time
+    Ret(Expr)
 }
 
 /// An identifier is a way of representing the result of an expression or a value
