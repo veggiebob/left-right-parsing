@@ -16,6 +16,8 @@ pub enum Term {
     /// user types
     Object(Box<LanguageObject>),
 
+    // todo: function types??
+
     // didn't see a great reason to group up pointers
 
     /// points to an object on the heap
@@ -48,6 +50,7 @@ pub struct StackData(pub(crate) Vec<StackFrame>);
 /// the type of type (kind)
 pub enum Kind {
     Unit(TypeIdentifier),
+    Parametric(TypeIdentifier, Vec<Box<Kind>>),
     Product(ProductType),
     Sum(SumType),
     Enum(EnumType)

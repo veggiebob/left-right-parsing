@@ -4,7 +4,7 @@ use core::option::Option::None;
 use std::collections::HashSet;
 use crate::interpret::definitions::Term;
 use crate::interpret::ImportStatement;
-use crate::lang_obj::Identifier::Unit;
+use crate::lang_obj::Identifier::{Temp, Unit};
 use crate::parse::{ParseMetaData, Parser};
 
 pub mod formatting;
@@ -160,13 +160,17 @@ pub enum Identifier {
     // definitely include a-zA-Z
     // using this system of parsing, we should be able to include *MANY* characters
     // that can be used in values
-    Unit(String)
+    Unit(String),
+
+    /// should be used for temporary interpreter variables
+    Temp(u64)
 }
 
 impl ToString for Identifier {
     fn to_string(&self) -> String {
         match self {
-            Unit(x) => x.clone()
+            Unit(x) => x.clone(),
+            Temp(x) => format!("_int_{}", x)
         }
     }
 }

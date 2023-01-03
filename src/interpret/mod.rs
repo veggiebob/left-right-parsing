@@ -1,7 +1,7 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Ref, RefCell};
 use std::collections::{HashMap, VecDeque};
-use crate::interpret::definitions::{HeapData, ProgramData, StackData, StackFrame, Term};
+use crate::interpret::definitions::{HeapData, Kind, LanguageObject, ProductObject, ProgramData, StackData, StackFrame, Term, TupleObject};
 use crate::lang_obj::{Expr, Identifier, Program, Statement};
 
 pub mod definitions;
@@ -23,6 +23,8 @@ pub struct ProgramRetriever {
 
 }
 
+type Variable = (Kind, Term);
+
 pub enum RuntimeError {
     Semantic(String),
     Interpreter(String) // an interpreter error. developer error.
@@ -30,12 +32,12 @@ pub enum RuntimeError {
 
 pub enum EvalResult {
     Term(Term),
-    Call(StackFrame, Vec<Statement>)
+    Call(Vec<StackFrame>, Vec<Statement>)
 }
 
 pub enum InterpreterAction {
     Return(Term),
-    Call(StackFrame, Vec<Statement>)
+    Call(Vec<StackFrame>, Vec<Statement>)
 }
 
 pub struct Interpreter {
@@ -105,7 +107,7 @@ impl Interpreter {
                     // the first instruction to run is at the end of the stack
                     self.instruction_stack.push(stmt);
                 }
-                self.stack.0.push(sf); // add the stack frame
+                self.stack.0.extend(sf); // add the stack frame
             } else if let Some(InterpreterAction::Return(term)) = res {
                 return_value = Some(term);
                 let _lost = self.stack.0.pop(); // drop the top stack frame
@@ -114,10 +116,6 @@ impl Interpreter {
 
         Ok(())
     }
-
-    // fn get_stack_value(&self, ident: &Identifier) -> Option<&RefCell<Term>> {
-    //     self.stack.borrow_mut().0.last().unwrap().data.get(ident)
-    // }
 
     // return a (revised statement (the one currently being run), a new stackframe with necessary locals, statements inside new scope)
     fn interpret(&mut self, stmt: &Statement, return_value: Option<Term>) -> Result<Option<InterpreterAction>, RuntimeError> {
@@ -205,24 +203,107 @@ impl Interpreter {
             Expr::Nat(x) => Ok(Term::Nat(x.content).into()),
             Expr::Str(s) => Ok(Term::String(s.content.clone()).into()),
             Expr::Infix(left, op, right) => {
-                match op.as_str() {
-                    "+" => {
-                        // see if there is an implementation that exists for these two objects
-                        // this requires checking their types, I guess
-                        let left_t = self.evaluate(left)?;
-                        let right_t = self.evaluate(right)?;
-                        // are they addable?
-                        todo!()
-                    },
-                    _ => Err(RuntimeError::Semantic(format!("Unrecognized operator: '{}'", op)))
+                return match self.evaluate(left)? {
+                    EvalResult::Call(sfs, mut stmts) => {
+                        let sf = StackFrame {
+                            data: HashMap::new(),
+                            return_value: None
+                        };
+                        let tmp_ident = sf.get_interpreter_identifier();
+
+                        // the expression doesn't matter
+                        // this captures the result of the left expression return statement
+                        let capture = Statement::Let(tmp_ident.clone(),
+                                                     Expr::Variable(Identifier::Unit(String::new())));
+
+                        let ret = Statement::Ret(Expr::Infix(
+                            Expr::Variable(tmp_ident.clone()).into(),
+                            op.clone(),
+                            right.clone()));
+
+                        let mut stack_frames = vec![sf];
+                        stack_frames.extend(sfs);
+
+                        stmts.extend(vec![capture, ret]);
+
+                        Ok(EvalResult::Call(stack_frames, stmts))
+                    }
+                    EvalResult::Term(left_term) => {
+                        match self.evaluate(right)? {
+                            EvalResult::Call(sfs, mut stmts) => {
+                                let left_ident = Identifier::Temp(0);
+                                let sf = StackFrame {
+                                    data: {
+                                        let mut h = HashMap::new();
+                                        h.insert(left_ident.clone(), RefCell::new(left_term));
+                                        h
+                                    },
+                                    return_value: None
+                                };
+                                let right_ident = sf.get_interpreter_identifier();
+
+                                // the expression doesn't matter
+                                // this captures the result of the left expression return statement
+                                let capture = Statement::Let(right_ident.clone(),
+                                                             Expr::Variable(Identifier::Unit(String::new())));
+
+                                let ret = Statement::Ret(Expr::Infix(
+                                    Box::new(Expr::Variable(left_ident.clone())),
+                                    op.clone(),
+                                    Box::new(Expr::Variable(right_ident.clone()))
+                                ));
+
+                                let mut stack_frames = vec![sf];
+                                stack_frames.extend(sfs);
+
+                                stmts.extend(vec![capture, ret]);
+
+                                Ok(EvalResult::Call(stack_frames, stmts))
+                            },
+                            EvalResult::Term(right_term) => {
+                                match op.as_str() {
+                                    "," => Ok(EvalResult::Term(
+                                        Term::Object(
+                                            LanguageObject::Product(
+                                                ProductObject::Tuple(
+                                                    TupleObject(vec![left_term, right_term])))
+                                                .into()
+                                        ))),
+                                    "+" => todo!(),
+                                    _ => Err(RuntimeError::Interpreter(format!("Unrecognized operator: '{}'", op)))
+                                }
+                            }
+                        }
+                    }
                 }
             }
-            Expr::List(_) => todo!(),
-            Expr::Variable(_) => todo!(),
+            Expr::List(exprs) => {
+                todo!()
+            },
+            Expr::Variable(ident) => {
+                // look it up in stack
+                todo!()
+            },
             Expr::Conditional(_, _, _) => todo!(),
             Expr::Function(_, _, _, _) => todo!(),
             Expr::Lambda(_, _, _) => todo!(),
         }
+    }
+}
+
+impl StackFrame {
+
+    /// Get a new non-colliding identifier for interpreter use
+    fn get_interpreter_identifier(&self) -> Identifier {
+        Identifier::Temp(self.data
+            .keys()
+            .filter_map(|i| match i {
+                Identifier::Unit(_s) => None,
+                Identifier::Temp(x) => Some(*x)
+            })
+            .max()
+            .unwrap_or(0 as u64)
+        )
     }
 }
 
