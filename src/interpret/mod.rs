@@ -2,10 +2,13 @@ use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Ref, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
-use crate::interpret::definitions::{HeapData, Kind, LanguageObject, ProductObject, ProgramData, StackData, StackFrame, Term, TupleObject};
+use crate::interpret::definitions::{HeapData, Kind, LanguageObject, ListObject, ProductObject, ProgramData, StackData, StackFrame, Term, TupleObject};
 use crate::lang_obj::{Expr, Identifier, Program, Statement};
 
 pub mod definitions;
+
+#[cfg(test)]
+mod test;
 
 // finds and/or loads programs
 // uhhhhh not really sure no super good definitions yet
@@ -26,11 +29,13 @@ pub struct ProgramRetriever {
 
 type Variable = (Kind, Term);
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum RuntimeError {
     Semantic(String),
     Interpreter(String) // an interpreter error. developer error.
 }
 
+#[derive(Debug, PartialEq)]
 pub enum EvalResult {
     Term(Term),
     Call(Vec<StackFrame>, Vec<Statement>)
@@ -62,6 +67,8 @@ pub struct Interpreter {
     pub program_retriever: ProgramRetriever
 }
 
+/// temporary infix operator for concatenating lists, solely for interpreter use
+const LIST_CONCAT: &str = "_list_concatenator";
 
 impl Interpreter {
     pub fn new(program: Program, program_retriever: ProgramRetriever) -> Interpreter {
@@ -82,7 +89,7 @@ impl Interpreter {
         }
     }
 
-    pub fn start(&mut self) -> Result<(), RuntimeError> {
+    pub fn start(&mut self) -> Result<Option<Term>, RuntimeError> {
         // do any initialization steps
         let sf = StackFrame {
             data: HashMap::new(),
@@ -115,7 +122,7 @@ impl Interpreter {
             }
         }
 
-        Ok(())
+        Ok(return_value)
     }
 
     // return a (revised statement (the one currently being run), a new stackframe with necessary locals, statements inside new scope)
@@ -315,7 +322,7 @@ impl Interpreter {
                                             Err(RuntimeError::Semantic(format!("Expected left side of operation to be a function")))
                                         }
                                     }
-                                    _ => Err(RuntimeError::Interpreter(format!("Unrecognized operator: '{}'", op)))
+                                    _ => Err(RuntimeError::Semantic(format!("Unrecognized operator: '{}'", op)))
                                 }
                             }
                         }
@@ -323,7 +330,52 @@ impl Interpreter {
                 }
             }
             Expr::List(exprs) => {
-                todo!()
+                let mut exprs = exprs.clone();
+                if let Some(last) = exprs.pop() {
+                    let mut sf = StackFrame {
+                        data: HashMap::new(),
+                        return_value: None
+                    };
+                    let last_ident = sf.get_interpreter_identifier();
+
+                    match self.evaluate(&*last)? {
+                        EvalResult::Term(t) => {
+                            sf.data.insert(
+                                last_ident.clone(),
+                                Term::Object(LanguageObject::Product(ProductObject::List(ListObject(vec![t]))).into())
+                            );
+                            let stmts = vec![
+                                Statement::Ret(Expr::Infix(
+                                    Box::new(Expr::List(exprs)),
+                                    LIST_CONCAT.into(),
+                                    Box::new(Expr::Variable(last_ident.clone()))
+                                ))
+                            ];
+                            Ok(EvalResult::Call(vec![sf], stmts))
+                        }
+                        EvalResult::Call(sfs, mut stmts) => {
+                            let sf = StackFrame {
+                                data: HashMap::new(),
+                                return_value: None,
+                            };
+                            let last_ident = sf.get_interpreter_identifier();
+
+                            // captures return value
+                            let capture = Statement::Let(last_ident.clone(), Expr::Str("".into()));
+                            let ret = Statement::Ret(Expr::Infix(
+                                Box::new(Expr::List(exprs)),
+                                LIST_CONCAT.into(),
+                                Box::new(Expr::List(vec![Box::new(Expr::Variable(last_ident.clone()))]))
+                            ));
+                            stmts.extend(vec![capture, ret]);
+                            let mut stack_frames = vec![sf];
+                            stack_frames.extend(sfs);
+                            Ok(EvalResult::Call(stack_frames, stmts))
+                        }
+                    }
+                } else {
+                    Ok(EvalResult::Term(Term::Object(LanguageObject::Product(ProductObject::List(ListObject(vec![]))).into())))
+                }
             },
             Expr::Variable(ident) => {
                 // look it up in stack

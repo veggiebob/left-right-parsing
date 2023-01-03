@@ -6,7 +6,7 @@ use crate::lang_obj::{Expr, FunctionBody, FunctionSignature, Identifier, Stateme
 /// These are the classes of objects that are stored during runtime
 /// a couple arbitrary types will be included for convenience.
 /// Their implementations will be written out in Rust.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Term {
     /// "primitives"
     String(String),
@@ -44,6 +44,7 @@ pub struct HeapData {
     pub data: HashMap<HeapID, Term>
 }
 
+#[derive(Debug, PartialEq)]
 pub struct StackFrame {
     pub data: HashMap<Identifier, Term>,
     pub return_value: Option<Term>
@@ -63,7 +64,7 @@ pub enum Kind {
 }
 
 /// parallel to Kind, but containing data
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum LanguageObject {
     Of(Term),
     Product(ProductObject),
@@ -80,11 +81,12 @@ pub struct ProductType {
 // they do not have names
 // also this has been flattened for convenience
 // because I didn't want to have a `data` field for it to be the only field
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ProductObject {
     None, // empty tuple
     Tuple(TupleObject),
-    Named(NamedProductObject)
+    Named(NamedProductObject),
+    List(ListObject)
 }
 
 /// Different ways of representing product types
@@ -106,7 +108,7 @@ pub struct TupleType {
     pub types: Vec<Box<Kind>>
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TupleObject(pub Vec<Term>);
 
 /// Object style
@@ -114,8 +116,11 @@ pub struct NamedProductType {
     pub fields: HashMap<Identifier, Box<Kind>>
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct NamedProductObject(pub HashMap<Identifier, Term>);
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ListObject(pub Vec<Term>);
 
 // union type (disjunct)
 pub struct SumType {
@@ -123,7 +128,7 @@ pub struct SumType {
     pub options: HashSet<Identifier>
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct SumObject(pub Identifier);
 
 /// A combination of sum types and product types.
@@ -133,7 +138,7 @@ pub struct EnumType {
     pub options: HashMap<Identifier, ProductType>
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct EnumObject(pub Identifier, pub ProductObject);
 
 impl Term {

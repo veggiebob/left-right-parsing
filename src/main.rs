@@ -1,15 +1,11 @@
 #[macro_use] extern crate maplit;
 
-use std::cell::RefCell;
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::io::Write;
-use std::ops::Add;
-use std::process::exit;
 use std::rc::Rc;
-use std::sync::Arc;
 use crate::lang_obj::{Expr, ParseError, Program, Statement};
-use crate::lang_obj::formatting::{Format, HTML, JSON, Style, Text};
+use crate::lang_obj::formatting::{Format, HTML, JSON, Style};
 use crate::parse::*;
 use crate::parse::structure_parsers::*;
 use crate::program_parsing::ProgramParser;
@@ -45,12 +41,12 @@ fn run_main_program(prgm_parser: ProgramParser, stmt_parser: Rc<StatementParser>
         Expression,
         Statement,
         Program
-    };
+    }
 
     enum RunMode {
         Interactive,
         Evaluation(String)
-    };
+    }
 
     // 'i' for interactive
     let run_mode = if args.len() > 1 {
@@ -92,7 +88,7 @@ fn run_main_program(prgm_parser: ProgramParser, stmt_parser: Rc<StatementParser>
             prgm_parser.parse(obj, true, ParseMetaData::new())
                 .and_then(|hs| {
             let mut errors = String::new();
-            let h = hs.into_iter().filter(|(prgm, used)| {
+            let h = hs.into_iter().filter(|(prgm, _used)| {
                 let validation = prgm_validator.validate(prgm);
                 if let Err(ref err) = validation {
                     errors += &*format!("{}\n", err);

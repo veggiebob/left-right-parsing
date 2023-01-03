@@ -3,12 +3,10 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::Hash;
-use std::marker::PhantomData;
 use std::rc::Rc;
 use crate::parse::{ParseDecision, Parser, ParseResult};
 use crate::{chainable, ParseError, ParseMetaData};
 use crate::ez_parse::funcs::UnionResult::{Left, Right};
-use crate::ez_parse::ops::EZ;
 use crate::funcs::{expect_str, take};
 
 pub type ParserRef<P> = Rc<RefCell<P>>;

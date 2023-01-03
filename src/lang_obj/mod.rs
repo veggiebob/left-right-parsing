@@ -101,6 +101,14 @@ impl From<String> for LOString {
     }
 }
 
+impl From<&str> for LOString {
+    fn from(s: &str) -> Self {
+        LOString {
+            content: s.to_string()
+        }
+    }
+}
+
 impl From<LONat> for Expr {
     fn from(n: LONat) -> Self {
         Expr::Nat(n)
