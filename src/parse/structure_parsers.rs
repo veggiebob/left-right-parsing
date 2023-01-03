@@ -203,7 +203,6 @@ struct BaseFnDef {
 impl From<BaseFnDef> for Statement {
     fn from(stmt: BaseFnDef) -> Self {
         Statement::Let(Unit(stmt.name.clone()), Expr::Function(
-            stmt.name,
             (Box::new(stmt.args.into_iter().map(|(a, b)| (a, Some(b))).collect()), None),
             stmt.where_clause,
             stmt.expr.into())

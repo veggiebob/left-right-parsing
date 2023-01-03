@@ -21,6 +21,10 @@ pub struct LONat {
 
 pub type FunctionSignature = (Box<Vec<(Identifier, Option<TypeIdentifier>)>>, Option<TypeIdentifier>);
 
+pub type FunctionBody = Vec<Box<Statement>>;
+
+
+
 #[derive(Eq, PartialEq, Debug, Hash, Clone)]
 pub enum Expr {
 
@@ -41,18 +45,6 @@ pub enum Expr {
     /// where the separator can be any `char`
     List(Vec<Box<Expr>>),
 
-    /// Represents a function call. The first being the operator, the second being
-    /// the operand. There is no separator between the expressions.
-    /// Just because it may parse successfully does not mean it's an actual function.
-    /// For example, "3(2)" could parse as a valid "function expression" but since
-    /// the types won't be known until after parsing has been analyzed, it's impossible
-    /// to know if "3" is a function.
-    /// Ideally, this will be used for expressions that look like "func_name[arg1, arg2]"
-    // this should be implemented in the future, but for now I'll just use an infix
-    // operator to symbolize function calls. It's easier that way.
-    // Something like "func_name $ [arg1, arg2]"
-    // FuncCall(Identifier, Box<Expr>),
-
     /// Any other symbol that would be used to identify a local variable
     Variable(Identifier),
 
@@ -63,11 +55,11 @@ pub enum Expr {
 
     /// May be impure
     /// name, signature, body, return
-    Function(String, FunctionSignature, Vec<Box<Statement>>, Box<Expr>),
+    Function(FunctionSignature, FunctionBody, Box<Expr>),
 
     /// Pure (and should be guaranteed to!)
-    /// name, signature, return
-    Lambda(String, FunctionSignature, Box<Expr>)
+    /// signature, return
+    Lambda(FunctionSignature, Box<Expr>)
 }
 
 #[derive(Eq, PartialEq, Debug, Clone)]
@@ -172,6 +164,18 @@ impl ToString for Identifier {
             Unit(x) => x.clone(),
             Temp(x) => format!("_int_{}", x)
         }
+    }
+}
+
+impl From<&str> for Identifier {
+    fn from(s: &str) -> Self {
+        Identifier::Unit(s.to_string())
+    }
+}
+
+impl From<String> for Identifier {
+    fn from(s: String) -> Self {
+        Unit(s)
     }
 }
 

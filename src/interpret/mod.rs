@@ -1,6 +1,7 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Ref, RefCell};
 use std::collections::{HashMap, VecDeque};
+use std::rc::Rc;
 use crate::interpret::definitions::{HeapData, Kind, LanguageObject, ProductObject, ProgramData, StackData, StackFrame, Term, TupleObject};
 use crate::lang_obj::{Expr, Identifier, Program, Statement};
 
@@ -142,7 +143,9 @@ impl Interpreter {
                     None => {
                         match self.evaluate(expr)? {
                             EvalResult::Term(value) => {
-                                *contained_value.borrow_mut() = value;
+                                self.stack.0.last_mut()
+                                    .ok_or(RuntimeError::Interpreter("Empty stack!".into()))?
+                                    .data.insert(ident.clone(), value);
                                 // assignment has completed, no further steps needed
                                 Ok(None)
                             },
@@ -153,7 +156,9 @@ impl Interpreter {
                         }
                     }
                     Some(x) => {
-                        *contained_value.borrow_mut() = x;
+                        self.stack.0.last_mut()
+                            .ok_or(RuntimeError::Interpreter("Empty stack!".into()))?
+                            .data.insert(ident.clone(), x);
                         Ok(None)
                     }
                 }
@@ -163,7 +168,7 @@ impl Interpreter {
                     Err(RuntimeError::Semantic(format!("Tried to re-assign {:?}", ident)))
                 } else {
                     if let Some(value) = return_value {
-                        self.stack.0.last_mut().unwrap().data.insert(ident.clone(), RefCell::new(value));
+                        self.stack.0.last_mut().unwrap().data.insert(ident.clone(), value);
                         return Ok(None)
                     }
                     match self.evaluate(expr)? {
@@ -172,7 +177,7 @@ impl Interpreter {
                         }
                         EvalResult::Term(t) => {
                             self.stack.0.last_mut().unwrap().data
-                                .insert(ident.clone(), RefCell::new(t));
+                                .insert(ident.clone(), t);
                             Ok(None)
                         }
                     }
@@ -235,7 +240,7 @@ impl Interpreter {
                                 let sf = StackFrame {
                                     data: {
                                         let mut h = HashMap::new();
-                                        h.insert(left_ident.clone(), RefCell::new(left_term));
+                                        h.insert(left_ident.clone(), left_term);
                                         h
                                     },
                                     return_value: None
@@ -270,6 +275,46 @@ impl Interpreter {
                                                 .into()
                                         ))),
                                     "+" => todo!(),
+                                    "$" | " " => {
+                                        // call function!
+                                        if let Term::Function((params, ret_t), body, ret, captured) = left_term {
+                                            // left side is a function
+                                            let err = Err(RuntimeError::Semantic(
+                                                format!(
+                                                    "Expected right side of operation to be a \
+                                                    tuple")));
+                                            if let Term::Object(o) = right_term {
+                                                if let LanguageObject::Product(ProductObject::Tuple(args)) = *o {
+                                                    let mut sf = StackFrame { // todo: inherit
+                                                        data: HashMap::new(),
+                                                        return_value: None
+                                                    };
+                                                    // todo: error for incorrect number of arguments
+                                                    for cap in captured {
+                                                        let c = self.top_stack()?.data.get(&cap)
+                                                            .ok_or(RuntimeError::Interpreter(format!("Variable <<{:?}>> was supposedly captured, but does not exist", cap)))?
+                                                            .clone();
+                                                        sf.data.insert(cap, c);
+                                                    }
+                                                    for ((ident, _type), arg) in params.into_iter().zip(args.0.into_iter()) {
+                                                        sf.data.insert(ident, arg);
+                                                    }
+                                                    let mut stmts: Vec<_> = body.into_iter().map(|s| *s).collect();
+                                                    stmts.push(Statement::Ret(*ret));
+                                                    Ok(EvalResult::Call(
+                                                        vec![sf],
+                                                        stmts
+                                                    ))
+                                                } else {
+                                                    err
+                                                }
+                                            } else {
+                                                err
+                                            }
+                                        } else {
+                                            Err(RuntimeError::Semantic(format!("Expected left side of operation to be a function")))
+                                        }
+                                    }
                                     _ => Err(RuntimeError::Interpreter(format!("Unrecognized operator: '{}'", op)))
                                 }
                             }
@@ -282,12 +327,38 @@ impl Interpreter {
             },
             Expr::Variable(ident) => {
                 // look it up in stack
-                todo!()
+                let value = self.stack.0.last()
+                    .ok_or(RuntimeError::Interpreter("Empty stack??".into()))?
+                    .data.get(ident)
+                    .ok_or(RuntimeError::Semantic(format!("Unrecognized variable: <<{:?}>>", ident)))?;
+                return Ok(EvalResult::Term(value.clone()));
             },
             Expr::Conditional(_, _, _) => todo!(),
-            Expr::Function(_, _, _, _) => todo!(),
-            Expr::Lambda(_, _, _) => todo!(),
+            Expr::Function(sig, body, ret) => {
+                return Ok(EvalResult::Term(Term::Function(
+                    sig.clone(),
+                    body.clone(),
+                    ret.clone(),
+                    self.top_stack()?.data.clone().into_keys().collect()
+                )))
+            },
+            Expr::Lambda(sig, ret) => {
+                return Ok(EvalResult::Term(Term::Function(
+                    sig.clone(),
+                    vec![],
+                    ret.clone(),
+                    self.top_stack()?.data.clone().into_keys().collect()
+                )))
+            },
         }
+    }
+
+    fn top_stack(&self) -> Result<&StackFrame, RuntimeError> {
+        self.stack.0.last().ok_or(RuntimeError::Interpreter(format!("Empty stack!")))
+    }
+
+    fn top_stack_mut(&mut self) -> Result<&mut StackFrame, RuntimeError> {
+        self.stack.0.last_mut().ok_or(RuntimeError::Interpreter(format!("Empty stack!")))
     }
 }
 

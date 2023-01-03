@@ -122,7 +122,7 @@ impl Format<Expr> for HTML {
                         gen: self
                     }
                 },
-                Expr::Function(name, (args, retT), body, ret) => {
+                Expr::Function((args, retT), body, ret) => {
                     // Statement::FnDef(name, args, body, wheres) => {
                     // format!(
                     //     "{} {} = ({}) => {} {} {} {} {}",
