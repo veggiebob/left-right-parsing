@@ -1,5 +1,6 @@
 use crate::interpret::{Interpreter, ProgramRetriever};
 use crate::interpret::definitions::Term;
+use crate::interpret::definitions::Term::Nat;
 use crate::lang_obj::{Expr, Identifier, Program, Statement};
 
 #[test]
@@ -19,6 +20,10 @@ fn first() {
 #[test]
 fn f1() {
     // test a very simple program
+
+    // f(x) = x
+    // let a = f(1)
+    // return a
 
     let a = Identifier::Unit("a".to_string());
     let f = Identifier::Unit("f".to_string());
@@ -41,5 +46,5 @@ fn f1() {
         ]
     };
     let mut interp = Interpreter::new(prgm, ProgramRetriever {});
-    println!("{:?}", interp.start());
+    assert_eq!(Ok(Some(Nat(1))), interp.start());
 }

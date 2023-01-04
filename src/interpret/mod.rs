@@ -1,6 +1,7 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Ref, RefCell};
 use std::collections::{HashMap, VecDeque};
+use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 use crate::interpret::definitions::{HeapData, Kind, LanguageObject, ListObject, ProductObject, ProgramData, StackData, StackFrame, Term, TupleObject};
 use crate::lang_obj::{Expr, Identifier, Program, Statement};
@@ -91,10 +92,7 @@ impl Interpreter {
 
     pub fn start(&mut self) -> Result<Option<Term>, RuntimeError> {
         // do any initialization steps
-        let sf = StackFrame {
-            data: HashMap::new(),
-            return_value: None
-        };
+        let sf = self.create_inherited_stack_frame();
         // add a stack frame
         self.stack.0.push(sf);
 
@@ -120,6 +118,11 @@ impl Interpreter {
                 return_value = Some(term);
                 let _lost = self.stack.0.pop(); // drop the top stack frame
             }
+
+            println!("------");
+            println!("Stack Frames:\n{}", self.stack.0.iter().map(|sf| format!("{}", sf)).reduce(|acc, x| acc + "\n" + &x).unwrap_or("".into()));
+            println!("Instructions: \n{}", self.instruction_stack.iter().map(ToString::to_string).rev().reduce(|mut x, acc| x + ";\n" + &acc).unwrap_or("<none>".to_string()));
+            println!("Return Value: {:?}", return_value);
         }
 
         Ok(return_value)
@@ -143,16 +146,13 @@ impl Interpreter {
                 }
             }
             Statement::Assignment(ident, expr) => {
-                let stack = &self.stack;
-                let contained_value = stack.0.last().unwrap().data.get(ident)
+                self.top_stack()?.data.get(ident)
                     .ok_or(format!("Cannot assign a value {:?} that does not exist.", ident))?;
                 match return_value {
                     None => {
                         match self.evaluate(expr)? {
                             EvalResult::Term(value) => {
-                                self.stack.0.last_mut()
-                                    .ok_or(RuntimeError::Interpreter("Empty stack!".into()))?
-                                    .data.insert(ident.clone(), value);
+                                self.top_stack_mut()?.data.insert(ident.clone(), value);
                                 // assignment has completed, no further steps needed
                                 Ok(None)
                             },
@@ -163,9 +163,7 @@ impl Interpreter {
                         }
                     }
                     Some(x) => {
-                        self.stack.0.last_mut()
-                            .ok_or(RuntimeError::Interpreter("Empty stack!".into()))?
-                            .data.insert(ident.clone(), x);
+                        self.top_stack_mut()?.data.insert(ident.clone(), x);
                         Ok(None)
                     }
                 }
@@ -175,7 +173,7 @@ impl Interpreter {
                     Err(RuntimeError::Semantic(format!("Tried to re-assign {:?}", ident)))
                 } else {
                     if let Some(value) = return_value {
-                        self.stack.0.last_mut().unwrap().data.insert(ident.clone(), value);
+                        self.top_stack_mut()?.data.insert(ident.clone(), value);
                         return Ok(None)
                     }
                     match self.evaluate(expr)? {
@@ -217,10 +215,7 @@ impl Interpreter {
             Expr::Infix(left, op, right) => {
                 return match self.evaluate(left)? {
                     EvalResult::Call(sfs, mut stmts) => {
-                        let sf = StackFrame {
-                            data: HashMap::new(),
-                            return_value: None
-                        };
+                        let sf = self.create_inherited_stack_frame();
                         let tmp_ident = sf.get_interpreter_identifier();
 
                         // the expression doesn't matter
@@ -243,15 +238,11 @@ impl Interpreter {
                     EvalResult::Term(left_term) => {
                         match self.evaluate(right)? {
                             EvalResult::Call(sfs, mut stmts) => {
-                                let left_ident = Identifier::Temp(0);
-                                let sf = StackFrame {
-                                    data: {
-                                        let mut h = HashMap::new();
-                                        h.insert(left_ident.clone(), left_term);
-                                        h
-                                    },
-                                    return_value: None
-                                };
+                                let mut sf = self.create_inherited_stack_frame();
+
+                                let left_ident = sf.get_interpreter_identifier();
+                                sf.data.insert(left_ident.clone(), left_term);
+
                                 let right_ident = sf.get_interpreter_identifier();
 
                                 // the expression doesn't matter
@@ -281,7 +272,21 @@ impl Interpreter {
                                                     TupleObject(vec![left_term, right_term])))
                                                 .into()
                                         ))),
-                                    "+" => todo!(),
+                                    LIST_CONCAT => {
+                                        let err = Err(RuntimeError::Semantic(format!("{} operator cannot be used between anything besides lists", LIST_CONCAT)));
+                                        if let Term::Object(obj) = left_term {
+                                            if let LanguageObject::Product(ProductObject::List(ListObject(mut left_items))) = *obj {
+                                                if let Term::Object(obj) = right_term {
+                                                    if let LanguageObject::Product(ProductObject::List(ListObject(right_items))) = *obj {
+                                                        left_items.extend(right_items);
+                                                        Ok(EvalResult::Term(Term::Object(Box::new(LanguageObject::Product(ProductObject::List(ListObject(
+                                                            left_items
+                                                        )))))))
+                                                    } else { err }
+                                                } else { err }
+                                            } else { err }
+                                        } else { err }
+                                    },
                                     "$" | " " => {
                                         // call function!
                                         if let Term::Function((params, ret_t), body, ret, captured) = left_term {
@@ -289,13 +294,10 @@ impl Interpreter {
                                             let err = Err(RuntimeError::Semantic(
                                                 format!(
                                                     "Expected right side of operation to be a \
-                                                    tuple")));
+                                                    list")));
                                             if let Term::Object(o) = right_term {
-                                                if let LanguageObject::Product(ProductObject::Tuple(args)) = *o {
-                                                    let mut sf = StackFrame { // todo: inherit
-                                                        data: HashMap::new(),
-                                                        return_value: None
-                                                    };
+                                                if let LanguageObject::Product(ProductObject::List(ListObject(args))) = *o {
+                                                    let mut sf = self.create_inherited_stack_frame();
                                                     // todo: error for incorrect number of arguments
                                                     for cap in captured {
                                                         let c = self.top_stack()?.data.get(&cap)
@@ -303,7 +305,7 @@ impl Interpreter {
                                                             .clone();
                                                         sf.data.insert(cap, c);
                                                     }
-                                                    for ((ident, _type), arg) in params.into_iter().zip(args.0.into_iter()) {
+                                                    for ((ident, _type), arg) in params.into_iter().zip(args) {
                                                         sf.data.insert(ident, arg);
                                                     }
                                                     let mut stmts: Vec<_> = body.into_iter().map(|s| *s).collect();
@@ -332,10 +334,7 @@ impl Interpreter {
             Expr::List(exprs) => {
                 let mut exprs = exprs.clone();
                 if let Some(last) = exprs.pop() {
-                    let mut sf = StackFrame {
-                        data: HashMap::new(),
-                        return_value: None
-                    };
+                    let mut sf = self.create_inherited_stack_frame();
                     let last_ident = sf.get_interpreter_identifier();
 
                     match self.evaluate(&*last)? {
@@ -354,10 +353,7 @@ impl Interpreter {
                             Ok(EvalResult::Call(vec![sf], stmts))
                         }
                         EvalResult::Call(sfs, mut stmts) => {
-                            let sf = StackFrame {
-                                data: HashMap::new(),
-                                return_value: None,
-                            };
+                            let sf = self.create_inherited_stack_frame();
                             let last_ident = sf.get_interpreter_identifier();
 
                             // captures return value
@@ -412,10 +408,25 @@ impl Interpreter {
     fn top_stack_mut(&mut self) -> Result<&mut StackFrame, RuntimeError> {
         self.stack.0.last_mut().ok_or(RuntimeError::Interpreter(format!("Empty stack!")))
     }
+
+    fn create_inherited_stack_frame(&self) -> StackFrame {
+        let mut sf = StackFrame {
+            data: HashMap::new(),
+            return_value: None
+        };
+        match self.top_stack() {
+            Err(_) => sf,
+            Ok(top_stack_frame) => {
+                for (ident, term) in top_stack_frame.data.iter() {
+                    sf.data.insert(ident.clone(), term.clone());
+                }
+                sf
+            }
+        }
+    }
 }
 
 impl StackFrame {
-
     /// Get a new non-colliding identifier for interpreter use
     fn get_interpreter_identifier(&self) -> Identifier {
         Identifier::Temp(self.data
@@ -425,8 +436,19 @@ impl StackFrame {
                 Identifier::Temp(x) => Some(*x)
             })
             .max()
+            .map(|x| x + 1)
             .unwrap_or(0 as u64)
         )
+    }
+}
+impl Display for StackFrame {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "StackFrame {}\n{}\n{}", "{",
+               self.data.iter()
+                   .map(|(k, v)| format!("   {}: {}", k, v))
+                   .reduce(|acc, x| acc + ",\n" + &x)
+                   .unwrap_or("".into()),
+               "}")
     }
 }
 

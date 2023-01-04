@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
+use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 use crate::lang_obj::{Expr, FunctionBody, FunctionSignature, Identifier, Statement, TypeIdentifier};
 
@@ -163,4 +164,70 @@ impl Term {
             Term::Function(..) => todo!()
         }
     }
+
+    pub fn is_list(&self) -> bool {
+        if let Term::Object(o) = self {
+            if let LanguageObject::Product(ProductObject::List(_)) = **o {
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            Term::String(s) => format!("\"{}\"", s),
+            Term::Nat(n) => format!("{}", n),
+            Term::Float(f) => format!("{}", f),
+            Term::Token(token) => format!("Token({})", token),
+            Term::Object(obj) => obj.to_string(),
+            Term::Function((params, _ret_t), body, ret, captured) => {
+                format!(
+                    "({}) => <({}\n    return {} )>",
+                    params.iter().map(|(name, _type)| name.to_string()).reduce(|s, i| s + ", " + &i).unwrap_or("".to_string()),
+                    body.iter().map(|stmt| "    ".to_string() + &stmt.to_string()).reduce(|s, st| s + "\n" + &st).unwrap_or("".into()),
+                    ret.to_string()
+                )
+            }
+            Term::HeapPointer(id) => format!("Pointer to {}", id),
+            Term::StackPointer(ident) => format!("Pointer to {:?}", ident)
+        }
+    }
+}
+
+impl Display for Term {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
+impl ToString for LanguageObject {
+    fn to_string(&self) -> String {
+        match self {
+            LanguageObject::Of(t) => t.to_string(),
+            LanguageObject::Product(prod) => {
+                match prod {
+                    ProductObject::None => "()".to_string(),
+                    ProductObject::Tuple(tup) =>
+                        format!("({})", remap(&tup.0, ToString::to_string, ", ", "")),
+                    ProductObject::Named(p) => format!("{:#?}", p),
+                    ProductObject::List(ListObject(list)) =>
+                        format!("[{}]", remap(list, ToString::to_string, ", ", ""))
+                }
+            }
+            LanguageObject::Sum(sum) => format!("{:#?}", sum),
+            LanguageObject::Enum(en) => format!("{:#?}", en)
+        }
+    }
+}
+
+fn remap<T, F, S>(list: &Vec<T>, map: F, sep: &str, or: &str) -> String
+where F: Fn(&T) -> S,
+      S: Into<String>
+{
+    list.iter().map(|x| map(x).into())
+        .reduce(|acc, x| acc + sep + &x).unwrap_or(or.into())
 }

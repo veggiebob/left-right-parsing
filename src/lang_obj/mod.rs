@@ -2,8 +2,10 @@ use core::convert::From;
 use core::option::Option;
 use core::option::Option::None;
 use std::collections::HashSet;
+use std::fmt::{Display, Formatter};
 use crate::interpret::definitions::Term;
 use crate::interpret::ImportStatement;
+use crate::lang_obj::formatting::Format;
 use crate::lang_obj::Identifier::{Temp, Unit};
 use crate::parse::{ParseMetaData, Parser};
 
@@ -166,12 +168,18 @@ pub enum Identifier {
     Temp(u64)
 }
 
-impl ToString for Identifier {
+impl Identifier {
     fn to_string(&self) -> String {
         match self {
             Unit(x) => x.clone(),
             Temp(x) => format!("_int_{}", x)
         }
+    }
+}
+
+impl Display for Identifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string())
     }
 }
 
@@ -187,7 +195,7 @@ impl From<String> for Identifier {
     }
 }
 
-impl ToString for Statement {
+impl Statement {
     fn to_string(&self) -> String {
         match self {
             Statement::Let(ident, expr) => format!("let {} = {}", ident.to_string(), expr.to_string()),
@@ -207,10 +215,25 @@ impl ToString for Statement {
             //             } else { "".to_string() }
             //     )
             // },
-            _ => todo!("missing case for ToString of Statement")
+            Statement::Assignment(ident, expr) => format!("{} = {}", ident.to_string(), expr.to_string()),
+            Statement::Impure(expr) => format!("{};", expr.to_string()),
+            Statement::Ret(expr) => format!("return {}", expr.to_string()),
+            _ => "<missing to_string case for statement>".to_string()
         }
     }
 }
+
+impl Display for Statement {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string())
+    }
+}
+
+// impl Display for Expr {
+//     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "{}", self.to_string())
+//     }
+// }
 
 impl ToString for Expr {
     fn to_string(&self) -> String {
