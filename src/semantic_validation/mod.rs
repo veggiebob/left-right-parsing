@@ -138,6 +138,7 @@ impl Validator<Statement> for StatementValidator {
 impl Validator<Expr> for ExpressionValidator {
     fn validate(&self, structure: &Expr) -> Result<(), String> {
         match structure {
+            Expr::Bool(_) => Ok(()),
             Expr::Nat(_) => Ok(()),
             Expr::Str(_) => Ok(()),
             Expr::Infix(left, _, right) => {

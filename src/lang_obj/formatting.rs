@@ -80,6 +80,7 @@ impl Format<Expr> for HTML {
         let content = format!(
             "{}",
             match ast {
+                Expr::Bool(b) => self.format(b),
                 Expr::Nat(x) => self.format(x),
                 Expr::Str(s) => self.format(s),
                 Expr::Infix(left, s, right) => {
@@ -161,6 +162,15 @@ impl Format<Expr> for HTML {
     }
 }
 
+impl Format<bool> for HTML {
+    fn format(&self, ast: &bool) -> Text<Self> where Self: Sized {
+        Text {
+            content: format!("<span>{}</span>", ast),
+            gen: &self,
+        }
+    }
+}
+
 impl Format<Statement> for HTML {
     fn format(&self, ast: &Statement) -> Text<Self> where Self: Sized {
         Text {
@@ -199,6 +209,7 @@ impl Format<Expr> for JSON {
     fn format(&self, ast: &Expr) -> Text<Self> {
         // ignoring pretty printing for now
         let content: String = match ast {
+            Expr::Bool(b) => format!("{}", b),
             Expr::Nat(x) => x.content.to_string(),
             Expr::Str(s) => quote(s.content.clone()),
             Expr::Infix(left, infix, right) => {

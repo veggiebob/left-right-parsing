@@ -10,6 +10,7 @@ use crate::lang_obj::{Expr, FunctionBody, FunctionSignature, Identifier, Stateme
 #[derive(Debug, Clone, PartialEq)]
 pub enum Term {
     /// "primitives"
+    Bool(bool),
     String(String),
     Nat(u64), // natural unsigned integer
     Float(f64),
@@ -18,7 +19,6 @@ pub enum Term {
     /// user types
     Object(Box<LanguageObject>),
 
-    // todo: function types??
     // we will determine whether functions are pure or not LATER
     // and using TYPES
     // which will accompany TERMS
@@ -145,6 +145,7 @@ pub struct EnumObject(pub Identifier, pub ProductObject);
 impl Term {
     pub fn get_type(&self) -> Kind {
         match self {
+            Term::Bool(_) => Kind::Unit("bool".to_string()),
             Term::String(_) => Kind::Unit("string".to_string()),
             Term::Nat(_) => Kind::Unit("nat".to_string()),
             Term::Float(_) => Kind::Unit("float".to_string()),
@@ -179,6 +180,7 @@ impl Term {
 
     pub fn to_string(&self) -> String {
         match self {
+            Term::Bool(b) => format!("{}", b),
             Term::String(s) => format!("\"{}\"", s),
             Term::Nat(n) => format!("{}", n),
             Term::Float(f) => format!("{}", f),

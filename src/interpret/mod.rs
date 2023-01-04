@@ -210,6 +210,7 @@ impl Interpreter {
         // Of course, supposing imports are allowed, there is much more
         // that can be created, so this can remain fairly bare bones.
         match expr {
+            Expr::Bool(b) => Ok(Term::Bool(*b).into()),
             Expr::Nat(x) => Ok(Term::Nat(x.content).into()),
             Expr::Str(s) => Ok(Term::String(s.content.clone()).into()),
             Expr::Infix(left, op, right) => {
@@ -305,10 +306,12 @@ impl Interpreter {
                                                             .clone();
                                                         sf.data.insert(cap, c);
                                                     }
+                                                    // insert arguments into stack frame
                                                     for ((ident, _type), arg) in params.into_iter().zip(args) {
                                                         sf.data.insert(ident, arg);
                                                     }
                                                     let mut stmts: Vec<_> = body.into_iter().map(|s| *s).collect();
+                                                    // add return statement
                                                     stmts.push(Statement::Ret(*ret));
                                                     Ok(EvalResult::Call(
                                                         vec![sf],
@@ -381,7 +384,31 @@ impl Interpreter {
                     .ok_or(RuntimeError::Semantic(format!("Unrecognized variable: <<{:?}>>", ident)))?;
                 return Ok(EvalResult::Term(value.clone()));
             },
-            Expr::Conditional(_, _, _) => todo!(),
+            Expr::Conditional(cond, then, otherwise) => {
+                match self.evaluate(cond)? {
+                    EvalResult::Term(t) => {
+                        if let Term::Bool(b) = t {
+                            self.evaluate(if b { then } else { otherwise })
+                        } else {
+                            Err(RuntimeError::Semantic(format!("Condition is not a boolean.")))
+                        }
+                    }
+                    EvalResult::Call(sfs, mut stmts) => {
+                        let sf = self.create_inherited_stack_frame();
+                        let cond_var = sf.get_interpreter_identifier();
+                        let capture = Statement::Let(cond_var.clone(), Expr::Str("".into()));
+                        let ret = Statement::Ret(Expr::Conditional(
+                            Box::new(Expr::Variable(cond_var.clone())),
+                            then.clone(),
+                            otherwise.clone()
+                        ));
+                        stmts.extend(vec![capture, ret]);
+                        let mut stack_frames = vec![sf];
+                        stack_frames.extend(sfs);
+                        Ok(EvalResult::Call(stack_frames, stmts))
+                    }
+                }
+            },
             Expr::Function(sig, body, ret) => {
                 return Ok(EvalResult::Term(Term::Function(
                     sig.clone(),

@@ -30,6 +30,9 @@ pub type FunctionBody = Vec<Box<Statement>>;
 #[derive(Eq, PartialEq, Debug, Hash, Clone)]
 pub enum Expr {
 
+    /// Boolean :)
+    Bool(bool),
+
     /// Represents a whole, non-negative integer.
     /// regex: \d+
     Nat(LONat),
@@ -51,6 +54,7 @@ pub enum Expr {
     Variable(Identifier),
 
     /// Represents an If-else style conditional
+    /// cond, true-expr, false-expr
     // syntax:
     // if\s*<condition expr>\s*<true expr>\s*else\s*<false expr>
     Conditional(Box<Expr>, Box<Expr>, Box<Expr>),
@@ -238,6 +242,7 @@ impl Display for Statement {
 impl ToString for Expr {
     fn to_string(&self) -> String {
         match self {
+            Expr::Bool(b) => format!("{}", b),
             Expr::Nat(x) => x.content.to_string(),
             Expr::Str(s) => format!("\"{}\"", s.content.clone()),
             Expr::Infix(left, infix, right) => {
