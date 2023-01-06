@@ -229,7 +229,7 @@ impl FnDefParser {
                 Some(
                     BaseFnDef {
                         name,
-                        args,
+                        args: args.into_iter().map(|(x, i)| (x, TypeIdentifier::Name(i))).collect(), // todo: use type expressions, not identifiers?
                         expr,
                         where_clause: vec![] // empty where-clause for now
                     }

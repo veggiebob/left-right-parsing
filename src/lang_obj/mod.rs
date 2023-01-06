@@ -123,7 +123,12 @@ impl From<LONat> for Expr {
 
 
 // how an identifier for a type is represented
-pub type TypeIdentifier = String;
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TypeIdentifier {
+    Name(String),
+    Parameter(String),
+    Anonymous
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Program {
@@ -280,5 +285,27 @@ impl ToString for Program {
             self.content.iter().map(|x| format!("  {}", x.to_string())).collect::<Vec<_>>().join("\n"),
             "}"
         )
+    }
+}
+
+impl TypeIdentifier {
+    pub fn to_string(&self) -> String {
+        match self {
+            TypeIdentifier::Name(t) => t.clone(),
+            TypeIdentifier::Parameter(s) => s.clone(),
+            TypeIdentifier::Anonymous => "«?»".to_string()
+        }
+    }
+}
+
+impl<T: Into<String>> From<T> for TypeIdentifier {
+    fn from(s: T) -> Self {
+        TypeIdentifier::Name(s.into())
+    }
+}
+
+impl Display for TypeIdentifier {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_string())
     }
 }

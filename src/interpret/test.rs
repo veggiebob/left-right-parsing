@@ -15,7 +15,7 @@ fn first() {
         ]
     };
     let mut interp = Interpreter::new(prgm, ProgramRetriever {});
-    assert_eq!(interp.start(), Ok(Some(Term::Nat(3))));
+    assert_eq!(interp.start().map(|val| val.map(|(_type, term)| term)), Ok(Some(Term::Nat(3))));
 }
 #[test]
 fn f1() {
@@ -46,7 +46,7 @@ fn f1() {
         ]
     };
     let mut interp = Interpreter::new(prgm, ProgramRetriever {});
-    assert_eq!(Ok(Some(Nat(1))), interp.start());
+    assert_eq!(Ok(Some(Nat(1))), interp.start().map(|val| val.map(|(_type, term)| term)));
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn f2() {
         ]
     };
     let mut interp = Interpreter::new(prgm, ProgramRetriever {});
-    assert_eq!(Ok(Some(Term::Object(Box::new(LanguageObject::Product(ProductObject::Tuple(TupleObject(vec![Nat(1), Nat(2)]))))))), interp.start());
+    assert_eq!(Ok(Some(Term::Object(Box::new(LanguageObject::Product(ProductObject::Tuple(TupleObject(vec![Nat(1), Nat(2)]))))))), interp.start().map(|val| val.map(|(_type, term)| term)));
 }
 
 #[test]
@@ -113,7 +113,7 @@ fn cond1() {
         ]
     };
     let mut interp = Interpreter::new(prgm, ProgramRetriever {});
-    assert_eq!(Ok(Some(Nat(2))), interp.start());
+    assert_eq!(Ok(Some(Nat(2))), interp.start().map(|val| val.map(|(_type, term)| term)));
 }
 
 #[test]
@@ -139,5 +139,5 @@ fn cond2() {
         ]
     };
     let mut interp = Interpreter::new(prgm, ProgramRetriever {});
-    assert_eq!(Ok(Some(Nat(3))), interp.start());
+    assert_eq!(Ok(Some(Nat(3))), interp.start().map(|val| val.map(|(_type, term)| term)));
 }

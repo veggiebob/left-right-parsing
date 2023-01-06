@@ -1,10 +1,15 @@
+use std::any::TypeId;
+use crate::interpret::definitions::{
+    HeapData, LanguageObject, ListObject, ProductObject, ProductType, ProductTypeKind, ProgramData,
+    StackData, StackFrame, Term, TupleObject, TupleType, Type,
+};
+use crate::lang_obj::{Expr, FunctionSignature, Identifier, Program, Statement, TypeIdentifier};
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Ref, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
-use crate::interpret::definitions::{HeapData, Kind, LanguageObject, ListObject, ProductObject, ProgramData, StackData, StackFrame, Term, TupleObject};
-use crate::lang_obj::{Expr, Identifier, Program, Statement};
+use crate::interpret::definitions::Type::Product;
 
 pub mod definitions;
 
@@ -17,7 +22,7 @@ mod test;
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
 pub struct ImportStatement {
     // ???
-    pub name: Identifier // ??
+    pub name: Identifier, // ??
 }
 trait ProgramAcquisitionService {
     fn find(import: ImportStatement) -> Program; // tentative
@@ -25,26 +30,25 @@ trait ProgramAcquisitionService {
 
 pub struct ProgramRetriever {
     // context?
-
 }
 
-type Variable = (Kind, Term);
+type Value = (Type, Term);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum RuntimeError {
     Semantic(String),
-    Interpreter(String) // an interpreter error. developer error.
+    Interpreter(String), // an interpreter error. developer error.
 }
 
 #[derive(Debug, PartialEq)]
 pub enum EvalResult {
-    Term(Term),
-    Call(Vec<StackFrame>, Vec<Statement>)
+    Term(Value),
+    Call(Vec<StackFrame>, Vec<Statement>),
 }
 
 pub enum InterpreterAction {
-    Return(Term),
-    Call(Vec<StackFrame>, Vec<Statement>)
+    Return(Value),
+    Call(Vec<StackFrame>, Vec<Statement>),
 }
 
 pub struct Interpreter {
@@ -65,11 +69,12 @@ pub struct Interpreter {
     pub program: Program,
 
     /// other stuff:
-    pub program_retriever: ProgramRetriever
+    pub program_retriever: ProgramRetriever,
 }
 
 /// temporary infix operator for concatenating lists, solely for interpreter use
-const LIST_CONCAT: &str = "_list_concatenator";
+const LIST_CONCAT: &str = "«list_concatenator»";
+const TUPLE_CONCAT: &str = "«tuple_concatenator»";
 
 impl Interpreter {
     pub fn new(program: Program, program_retriever: ProgramRetriever) -> Interpreter {
@@ -79,18 +84,18 @@ impl Interpreter {
             stack: StackData(vec![]),
             instruction_stack: vec![],
             heap: HeapData {
-                data: HashMap::new()
+                data: HashMap::new(),
             },
             program_data: ProgramData {
                 types: HashMap::new(),
-                constants: HashMap::new() // globals
+                constants: HashMap::new(), // globals
             },
             program,
-            program_retriever
+            program_retriever,
         }
     }
 
-    pub fn start(&mut self) -> Result<Option<Term>, RuntimeError> {
+    pub fn start(&mut self) -> Result<Option<Value>, RuntimeError> {
         // do any initialization steps
         let sf = self.create_inherited_stack_frame();
         // add a stack frame
@@ -120,8 +125,24 @@ impl Interpreter {
             }
 
             println!("------");
-            println!("Stack Frames:\n{}", self.stack.0.iter().map(|sf| format!("{}", sf)).reduce(|acc, x| acc + "\n" + &x).unwrap_or("".into()));
-            println!("Instructions: \n{}", self.instruction_stack.iter().map(ToString::to_string).rev().reduce(|mut x, acc| x + ";\n" + &acc).unwrap_or("<none>".to_string()));
+            println!(
+                "Stack Frames:\n{}",
+                self.stack
+                    .0
+                    .iter()
+                    .map(|sf| format!("{}", sf))
+                    .reduce(|acc, x| acc + "\n" + &x)
+                    .unwrap_or("".into())
+            );
+            println!(
+                "Instructions: \n{}",
+                self.instruction_stack
+                    .iter()
+                    .map(ToString::to_string)
+                    .rev()
+                    .reduce(|mut x, acc| x + ";\n" + &acc)
+                    .unwrap_or("<none>".to_string())
+            );
             println!("Return Value: {:?}", return_value);
         }
 
@@ -129,25 +150,29 @@ impl Interpreter {
     }
 
     // return a (revised statement (the one currently being run), a new stackframe with necessary locals, statements inside new scope)
-    fn interpret(&mut self, stmt: &Statement, return_value: Option<Term>) -> Result<Option<InterpreterAction>, RuntimeError> {
+    fn interpret(
+        &mut self,
+        stmt: &Statement,
+        return_value: Option<Value>,
+    ) -> Result<Option<InterpreterAction>, RuntimeError> {
         return match stmt {
             Statement::Import(imt) => {
                 todo!("interpret import statement!")
-            },
+            }
             Statement::Impure(expr) => {
                 if let Some(t) = return_value {
-                    return Ok(None)
+                    return Ok(None);
                 }
                 match self.evaluate(expr)? {
                     EvalResult::Term(_t) => Ok(None), // we don't care what it evaluates to
-                    EvalResult::Call(sf, stmts) => {
-                        Ok(Some(InterpreterAction::Call(sf, stmts)))
-                    }
+                    EvalResult::Call(sf, stmts) => Ok(Some(InterpreterAction::Call(sf, stmts))),
                 }
             }
             Statement::Assignment(ident, expr) => {
-                self.top_stack()?.data.get(ident)
-                    .ok_or(format!("Cannot assign a value {:?} that does not exist.", ident))?;
+                self.top_stack()?.data.get(ident).ok_or(format!(
+                    "Cannot assign a value {:?} that does not exist.",
+                    ident
+                ))?;
                 match return_value {
                     None => {
                         match self.evaluate(expr)? {
@@ -155,7 +180,7 @@ impl Interpreter {
                                 self.top_stack_mut()?.data.insert(ident.clone(), value);
                                 // assignment has completed, no further steps needed
                                 Ok(None)
-                            },
+                            }
                             EvalResult::Call(sf, stmts) => {
                                 // evaluation calls for more computation.
                                 Ok(Some(InterpreterAction::Call(sf, stmts)))
@@ -170,18 +195,23 @@ impl Interpreter {
             }
             Statement::Let(ident, expr) => {
                 if let Some(_) = self.stack.borrow().0.last().unwrap().data.get(ident) {
-                    Err(RuntimeError::Semantic(format!("Tried to re-assign {:?}", ident)))
+                    Err(RuntimeError::Semantic(format!(
+                        "Tried to re-assign {:?}",
+                        ident
+                    )))
                 } else {
                     if let Some(value) = return_value {
                         self.top_stack_mut()?.data.insert(ident.clone(), value);
-                        return Ok(None)
+                        return Ok(None);
                     }
                     match self.evaluate(expr)? {
-                        EvalResult::Call(sf, stmts) => {
-                            Ok(Some(InterpreterAction::Call(sf, stmts)))
-                        }
+                        EvalResult::Call(sf, stmts) => Ok(Some(InterpreterAction::Call(sf, stmts))),
                         EvalResult::Term(t) => {
-                            self.stack.0.last_mut().unwrap().data
+                            self.stack
+                                .0
+                                .last_mut()
+                                .unwrap()
+                                .data
                                 .insert(ident.clone(), t);
                             Ok(None)
                         }
@@ -190,7 +220,7 @@ impl Interpreter {
             }
             Statement::Ret(expr) => {
                 if let Some(value) = return_value {
-                    return Ok(Some(InterpreterAction::Return(value)))
+                    return Ok(Some(InterpreterAction::Return(value)));
                 }
                 match self.evaluate(expr)? {
                     EvalResult::Term(t) => Ok(Some(InterpreterAction::Return(t))),
@@ -200,7 +230,7 @@ impl Interpreter {
                     }
                 }
             }
-        }
+        };
     }
 
     fn evaluate(&self, expr: &Expr) -> Result<EvalResult, RuntimeError> {
@@ -210,9 +240,9 @@ impl Interpreter {
         // Of course, supposing imports are allowed, there is much more
         // that can be created, so this can remain fairly bare bones.
         match expr {
-            Expr::Bool(b) => Ok(Term::Bool(*b).into()),
-            Expr::Nat(x) => Ok(Term::Nat(x.content).into()),
-            Expr::Str(s) => Ok(Term::String(s.content.clone()).into()),
+            Expr::Bool(b) => Ok(("bool".into(), Term::Bool(*b)).into()),
+            Expr::Nat(x) => Ok(("nat".into(), Term::Nat(x.content).into()).into()),
+            Expr::Str(s) => Ok(("string".into(), Term::String(s.content.clone())).into()),
             Expr::Infix(left, op, right) => {
                 return match self.evaluate(left)? {
                     EvalResult::Call(sfs, mut stmts) => {
@@ -221,13 +251,16 @@ impl Interpreter {
 
                         // the expression doesn't matter
                         // this captures the result of the left expression return statement
-                        let capture = Statement::Let(tmp_ident.clone(),
-                                                     Expr::Variable(Identifier::Unit(String::new())));
+                        let capture = Statement::Let(
+                            tmp_ident.clone(),
+                            Expr::Variable(Identifier::Unit(String::new())),
+                        );
 
                         let ret = Statement::Ret(Expr::Infix(
                             Expr::Variable(tmp_ident.clone()).into(),
                             op.clone(),
-                            right.clone()));
+                            right.clone(),
+                        ));
 
                         let mut stack_frames = vec![sf];
                         stack_frames.extend(sfs);
@@ -236,25 +269,27 @@ impl Interpreter {
 
                         Ok(EvalResult::Call(stack_frames, stmts))
                     }
-                    EvalResult::Term(left_term) => {
+                    EvalResult::Term(left ) => {
                         match self.evaluate(right)? {
                             EvalResult::Call(sfs, mut stmts) => {
                                 let mut sf = self.create_inherited_stack_frame();
 
                                 let left_ident = sf.get_interpreter_identifier();
-                                sf.data.insert(left_ident.clone(), left_term);
+                                sf.data.insert(left_ident.clone(), left);
 
                                 let right_ident = sf.get_interpreter_identifier();
 
                                 // the expression doesn't matter
                                 // this captures the result of the left expression return statement
-                                let capture = Statement::Let(right_ident.clone(),
-                                                             Expr::Variable(Identifier::Unit(String::new())));
+                                let capture = Statement::Let(
+                                    right_ident.clone(),
+                                    Expr::Variable(Identifier::Unit(String::new())),
+                                );
 
                                 let ret = Statement::Ret(Expr::Infix(
                                     Box::new(Expr::Variable(left_ident.clone())),
                                     op.clone(),
-                                    Box::new(Expr::Variable(right_ident.clone()))
+                                    Box::new(Expr::Variable(right_ident.clone())),
                                 ));
 
                                 let mut stack_frames = vec![sf];
@@ -263,60 +298,78 @@ impl Interpreter {
                                 stmts.extend(vec![capture, ret]);
 
                                 Ok(EvalResult::Call(stack_frames, stmts))
-                            },
-                            EvalResult::Term(right_term) => {
+                            }
+                            EvalResult::Term((right_type, right_term)) => {
+                                let (left_type, left_term) = left;
                                 match op.as_str() {
-                                    "," => Ok(EvalResult::Term(
+                                    "," => Ok((
+                                        Type::Product(ProductType {
+                                            name: TypeIdentifier::Anonymous,
+                                            data: ProductTypeKind::Tuple(TupleType {
+                                                length: 2,
+                                                types: vec![
+                                                    Box::new(left_type.clone()),
+                                                    Box::new(right_type),
+                                                ],
+                                            }),
+                                        }),
                                         Term::Object(
-                                            LanguageObject::Product(
-                                                ProductObject::Tuple(
-                                                    TupleObject(vec![left_term, right_term])))
-                                                .into()
-                                        ))),
+                                            LanguageObject::Product(ProductObject::Tuple(
+                                                TupleObject(vec![left_term.clone(), right_term]),
+                                            ))
+                                            .into(),
+                                        ),
+                                    )
+                                        .into()),
+                                    "+" => {
+                                        if let Term::Nat(x) = left_term {
+                                            if let Term::Nat(y) = right_term {
+                                                Ok((
+                                                    left_type, // assuming they are the same type
+                                                    Term::Nat(x + y),
+                                                )
+                                                    .into())
+                                            } else {
+                                                Err(RuntimeError::Semantic(format!(
+                                                    "Right side of + expression must be a number"
+                                                )))
+                                            }
+                                        } else {
+                                            Err(RuntimeError::Semantic(format!(
+                                                "Left side of + expression must be a number"
+                                            )))
+                                        }
+                                    }
                                     LIST_CONCAT => {
                                         let err = Err(RuntimeError::Semantic(format!("{} operator cannot be used between anything besides lists", LIST_CONCAT)));
+                                        if left_type != right_type {
+                                            return Err(RuntimeError::Semantic(format!("List contains multiple conflicting types, {:?} and {:?}", left_type, right_type)))
+                                        }
                                         if let Term::Object(obj) = left_term {
-                                            if let LanguageObject::Product(ProductObject::List(ListObject(mut left_items))) = *obj {
+                                            if let LanguageObject::Product(ProductObject::List(
+                                                ListObject(mut left_items),
+                                            )) = *obj
+                                            {
                                                 if let Term::Object(obj) = right_term {
-                                                    if let LanguageObject::Product(ProductObject::List(ListObject(right_items))) = *obj {
+                                                    if let LanguageObject::Product(
+                                                        ProductObject::List(ListObject(
+                                                            right_items,
+                                                        )),
+                                                    ) = *obj
+                                                    {
                                                         left_items.extend(right_items);
-                                                        Ok(EvalResult::Term(Term::Object(Box::new(LanguageObject::Product(ProductObject::List(ListObject(
-                                                            left_items
-                                                        )))))))
-                                                    } else { err }
-                                                } else { err }
-                                            } else { err }
-                                        } else { err }
-                                    },
-                                    "$" | " " => {
-                                        // call function!
-                                        if let Term::Function((params, ret_t), body, ret, captured) = left_term {
-                                            // left side is a function
-                                            let err = Err(RuntimeError::Semantic(
-                                                format!(
-                                                    "Expected right side of operation to be a \
-                                                    list")));
-                                            if let Term::Object(o) = right_term {
-                                                if let LanguageObject::Product(ProductObject::List(ListObject(args))) = *o {
-                                                    let mut sf = self.create_inherited_stack_frame();
-                                                    // todo: error for incorrect number of arguments
-                                                    for cap in captured {
-                                                        let c = self.top_stack()?.data.get(&cap)
-                                                            .ok_or(RuntimeError::Interpreter(format!("Variable <<{:?}>> was supposedly captured, but does not exist", cap)))?
-                                                            .clone();
-                                                        sf.data.insert(cap, c);
+                                                        Ok((
+                                                            left_type.clone(), // cause they should be the same
+                                                            Term::Object(
+                                                            Box::new(LanguageObject::Product(
+                                                                ProductObject::List(ListObject(
+                                                                    left_items,
+                                                                )),
+                                                            )),
+                                                        )).into())
+                                                    } else {
+                                                        err
                                                     }
-                                                    // insert arguments into stack frame
-                                                    for ((ident, _type), arg) in params.into_iter().zip(args) {
-                                                        sf.data.insert(ident, arg);
-                                                    }
-                                                    let mut stmts: Vec<_> = body.into_iter().map(|s| *s).collect();
-                                                    // add return statement
-                                                    stmts.push(Statement::Ret(*ret));
-                                                    Ok(EvalResult::Call(
-                                                        vec![sf],
-                                                        stmts
-                                                    ))
                                                 } else {
                                                     err
                                                 }
@@ -324,15 +377,139 @@ impl Interpreter {
                                                 err
                                             }
                                         } else {
-                                            Err(RuntimeError::Semantic(format!("Expected left side of operation to be a function")))
+                                            err
                                         }
                                     }
-                                    _ => Err(RuntimeError::Semantic(format!("Unrecognized operator: '{}'", op)))
+                                    TUPLE_CONCAT => {
+                                        let err = Err(RuntimeError::Semantic(format!("{} operator cannot be used between anything besides tuples", TUPLE_CONCAT)));
+                                        let l_type_err = Err(RuntimeError::Semantic(format!("Left type is not tuple!")));
+                                        let r_type_err = Err(RuntimeError::Semantic(format!("Right type is not tuple!")));
+                                        let mut left_types = if let Type::Product(ProductType { data, .. }) = left_type {
+                                            if let ProductTypeKind::Tuple(tup_type) = data {
+                                                Ok(tup_type.types)
+                                            } else { l_type_err }
+                                        } else { l_type_err }?;
+                                        let right_types = if let Type::Product(ProductType { data, .. }) = right_type {
+                                            if let ProductTypeKind::Tuple(tup_type) = data {
+                                                Ok(tup_type.types)
+                                            } else { r_type_err }
+                                        } else { r_type_err }?;
+                                        if let Term::Object(obj) = left_term {
+                                            if let LanguageObject::Product(ProductObject::Tuple(
+                                                                               TupleObject(mut left_items),
+                                                                           )) = *obj
+                                            {
+                                                if let Term::Object(obj) = right_term {
+                                                    if let LanguageObject::Product(
+                                                        ProductObject::Tuple(TupleObject(
+                                                                                right_items,
+                                                                            )),
+                                                    ) = *obj
+                                                    {
+                                                        left_items.extend(right_items);
+                                                        left_types.extend(right_types);
+                                                        Ok((
+                                                            Type::Product(ProductType {
+                                                                name: TypeIdentifier::Anonymous,
+                                                                data: ProductTypeKind::Tuple(TupleType {
+                                                                    length: left_types.len(),
+                                                                    types: left_types
+                                                                })
+                                                            }), // cause they should be the same
+                                                            Term::Object(
+                                                                Box::new(LanguageObject::Product(
+                                                                    ProductObject::List(ListObject(
+                                                                        left_items,
+                                                                    )),
+                                                                )),
+                                                            )).into())
+                                                    } else {
+                                                        err
+                                                    }
+                                                } else {
+                                                    err
+                                                }
+                                            } else {
+                                                err
+                                            }
+                                        } else {
+                                            err
+                                        }
+                                    }
+                                    "$" | " " => {
+                                        // call function!
+                                        if let Term::Function(
+                                            (params, ret_t),
+                                            body,
+                                            ret,
+                                            captured,
+                                        ) = left_term
+                                        {
+                                            // left side is a function
+                                            let err = Err(RuntimeError::Semantic(format!(
+                                                "Expected right side of operation to be a \
+                                                    tuple."
+                                            )));
+                                            let type_err = Err(RuntimeError::Interpreter(format!(
+                                                "Wrong type format for argument tuple."
+                                            )));
+                                            let right_types = if let Type::Product(ProductType { name, data }) = right_type {
+                                                if let ProductTypeKind::Tuple(tuple_type) = data {
+                                                    Ok(tuple_type.types)
+                                                } else {
+                                                    type_err
+                                                }
+                                            } else {
+                                                type_err
+                                            }?;
+                                            if let Term::Object(o) = right_term {
+                                                if let LanguageObject::Product(
+                                                    ProductObject::Tuple(TupleObject(args)),
+                                                ) = *o
+                                                {
+                                                    let mut sf =
+                                                        self.create_inherited_stack_frame();
+                                                    // todo: error for incorrect number of arguments
+                                                    for cap in captured {
+                                                        let c = self.top_stack()?.data.get(&cap)
+                                                            .ok_or(RuntimeError::Interpreter(format!("Variable <<{:?}>> was supposedly captured, but does not exist", cap)))?
+                                                            .clone();
+                                                        sf.data.insert(cap.clone(), c);
+                                                    }
+                                                    // insert arguments into stack frame
+                                                    for ((ident, typ), (arg_type, arg)) in
+                                                        params.into_iter().zip(right_types.into_iter().zip(args))
+                                                    {
+                                                        // todo: check to see if type of parameter matches
+                                                        //  arg type
+                                                        sf.data.insert(ident, (*arg_type, arg));
+                                                    }
+                                                    let mut stmts: Vec<_> =
+                                                        body.into_iter().map(|s| *s.clone()).collect();
+                                                    // add return statement
+                                                    stmts.push(Statement::Ret(*ret.clone()));
+                                                    Ok(EvalResult::Call(vec![sf], stmts))
+                                                } else {
+                                                    err
+                                                }
+                                            } else {
+                                                err
+                                            }
+                                        } else {
+                                            Err(RuntimeError::Semantic(format!(
+                                                "Expected left side of operation to be a function"
+                                            )))
+                                        }
+                                    }
+                                    _ => Err(RuntimeError::Semantic(format!(
+                                        "Unrecognized operator: '{}'",
+                                        op
+                                    ))),
                                 }
                             }
                         }
                     }
-                }
+                };
             }
             Expr::List(exprs) => {
                 let mut exprs = exprs.clone();
@@ -341,18 +518,24 @@ impl Interpreter {
                     let last_ident = sf.get_interpreter_identifier();
 
                     match self.evaluate(&*last)? {
-                        EvalResult::Term(t) => {
+                        EvalResult::Term((t_type, t_term)) => {
                             sf.data.insert(
                                 last_ident.clone(),
-                                Term::Object(LanguageObject::Product(ProductObject::List(ListObject(vec![t]))).into())
+                                (
+                                    Type::Parametric("list".into(), vec![Box::new(t_type)]),
+                                    Term::Object(
+                                        LanguageObject::Product(ProductObject::List(ListObject(
+                                            vec![t_term],
+                                        )))
+                                        .into(),
+                                    ),
+                                ),
                             );
-                            let stmts = vec![
-                                Statement::Ret(Expr::Infix(
-                                    Box::new(Expr::List(exprs)),
-                                    LIST_CONCAT.into(),
-                                    Box::new(Expr::Variable(last_ident.clone()))
-                                ))
-                            ];
+                            let stmts = vec![Statement::Ret(Expr::Infix(
+                                Box::new(Expr::List(exprs)),
+                                LIST_CONCAT.into(),
+                                Box::new(Expr::Variable(last_ident.clone())),
+                            ))];
                             Ok(EvalResult::Call(vec![sf], stmts))
                         }
                         EvalResult::Call(sfs, mut stmts) => {
@@ -364,7 +547,9 @@ impl Interpreter {
                             let ret = Statement::Ret(Expr::Infix(
                                 Box::new(Expr::List(exprs)),
                                 LIST_CONCAT.into(),
-                                Box::new(Expr::List(vec![Box::new(Expr::Variable(last_ident.clone()))]))
+                                Box::new(Expr::List(vec![Box::new(Expr::Variable(
+                                    last_ident.clone(),
+                                ))])),
                             ));
                             stmts.extend(vec![capture, ret]);
                             let mut stack_frames = vec![sf];
@@ -373,73 +558,110 @@ impl Interpreter {
                         }
                     }
                 } else {
-                    Ok(EvalResult::Term(Term::Object(LanguageObject::Product(ProductObject::List(ListObject(vec![]))).into())))
+                    Ok((Type::Product(ProductType { name: TypeIdentifier::Anonymous, data: ProductTypeKind::Tuple(TupleType { length: 0, types: vec![]})}),
+                        Term::Object(
+                        LanguageObject::Product(ProductObject::List(ListObject(vec![]))).into(),
+                    )).into())
                 }
-            },
+            }
             Expr::Variable(ident) => {
                 // look it up in stack
-                let value = self.stack.0.last()
+                let value = self
+                    .stack
+                    .0
+                    .last()
                     .ok_or(RuntimeError::Interpreter("Empty stack??".into()))?
-                    .data.get(ident)
-                    .ok_or(RuntimeError::Semantic(format!("Unrecognized variable: <<{:?}>>", ident)))?;
+                    .data
+                    .get(ident)
+                    .ok_or(RuntimeError::Semantic(format!(
+                        "Unrecognized variable: <<{:?}>>",
+                        ident
+                    )))?;
                 return Ok(EvalResult::Term(value.clone()));
-            },
-            Expr::Conditional(cond, then, otherwise) => {
-                match self.evaluate(cond)? {
-                    EvalResult::Term(t) => {
-                        if let Term::Bool(b) = t {
-                            self.evaluate(if b { then } else { otherwise })
-                        } else {
-                            Err(RuntimeError::Semantic(format!("Condition is not a boolean.")))
-                        }
+            }
+            Expr::Conditional(cond, then, otherwise) => match self.evaluate(cond)? {
+                EvalResult::Term((_type, t)) => {
+                    if let Term::Bool(b) = t {
+                        self.evaluate(if b { then } else { otherwise })
+                    } else {
+                        Err(RuntimeError::Semantic(format!(
+                            "Condition is not a boolean."
+                        )))
                     }
-                    EvalResult::Call(sfs, mut stmts) => {
-                        let sf = self.create_inherited_stack_frame();
-                        let cond_var = sf.get_interpreter_identifier();
-                        let capture = Statement::Let(cond_var.clone(), Expr::Str("".into()));
-                        let ret = Statement::Ret(Expr::Conditional(
-                            Box::new(Expr::Variable(cond_var.clone())),
-                            then.clone(),
-                            otherwise.clone()
-                        ));
-                        stmts.extend(vec![capture, ret]);
-                        let mut stack_frames = vec![sf];
-                        stack_frames.extend(sfs);
-                        Ok(EvalResult::Call(stack_frames, stmts))
-                    }
+                }
+                EvalResult::Call(sfs, mut stmts) => {
+                    let sf = self.create_inherited_stack_frame();
+                    let cond_var = sf.get_interpreter_identifier();
+                    let capture = Statement::Let(cond_var.clone(), Expr::Str("".into()));
+                    let ret = Statement::Ret(Expr::Conditional(
+                        Box::new(Expr::Variable(cond_var.clone())),
+                        then.clone(),
+                        otherwise.clone(),
+                    ));
+                    stmts.extend(vec![capture, ret]);
+                    let mut stack_frames = vec![sf];
+                    stack_frames.extend(sfs);
+                    Ok(EvalResult::Call(stack_frames, stmts))
                 }
             },
             Expr::Function(sig, body, ret) => {
-                return Ok(EvalResult::Term(Term::Function(
+                return Ok((
+                    self.get_func_sig_type(sig),
+                    Term::Function(
                     sig.clone(),
                     body.clone(),
                     ret.clone(),
-                    self.top_stack()?.data.clone().into_keys().collect()
-                )))
-            },
+                    self.top_stack()?.data.clone().into_keys().collect(),
+                )).into())
+            }
             Expr::Lambda(sig, ret) => {
-                return Ok(EvalResult::Term(Term::Function(
+                return Ok((
+                    self.get_func_sig_type(sig),
+                    Term::Function(
                     sig.clone(),
                     vec![],
                     ret.clone(),
-                    self.top_stack()?.data.clone().into_keys().collect()
-                )))
-            },
+                    self.top_stack()?.data.clone().into_keys().collect(),
+                )).into())
+            }
         }
     }
 
+    fn get_type(&self, type_id: &TypeIdentifier) -> Type {
+        Type::Unit(type_id.clone()) // technically works, won't work though
+        // todo: look up type to find out what the actual type is
+    }
+
+    fn get_func_sig_type(&self, sig: &FunctionSignature) -> Type {
+        let (params, ret_t) = sig;
+        Type::Parametric(
+            "function".into(),
+            vec![
+                ret_t.as_ref().map(|t| self.get_type(t)).unwrap_or(Type::unknown())
+            ].into_iter().chain(
+                params.iter()
+                    .map(|(_id, typ)| typ.as_ref().map(|t| self.get_type(t)).unwrap_or(Type::unknown())))
+                .map(Box::new).collect()
+        )
+    }
+
     fn top_stack(&self) -> Result<&StackFrame, RuntimeError> {
-        self.stack.0.last().ok_or(RuntimeError::Interpreter(format!("Empty stack!")))
+        self.stack
+            .0
+            .last()
+            .ok_or(RuntimeError::Interpreter(format!("Empty stack!")))
     }
 
     fn top_stack_mut(&mut self) -> Result<&mut StackFrame, RuntimeError> {
-        self.stack.0.last_mut().ok_or(RuntimeError::Interpreter(format!("Empty stack!")))
+        self.stack
+            .0
+            .last_mut()
+            .ok_or(RuntimeError::Interpreter(format!("Empty stack!")))
     }
 
     fn create_inherited_stack_frame(&self) -> StackFrame {
         let mut sf = StackFrame {
             data: HashMap::new(),
-            return_value: None
         };
         match self.top_stack() {
             Err(_) => sf,
@@ -456,26 +678,32 @@ impl Interpreter {
 impl StackFrame {
     /// Get a new non-colliding identifier for interpreter use
     fn get_interpreter_identifier(&self) -> Identifier {
-        Identifier::Temp(self.data
-            .keys()
-            .filter_map(|i| match i {
-                Identifier::Unit(_s) => None,
-                Identifier::Temp(x) => Some(*x)
-            })
-            .max()
-            .map(|x| x + 1)
-            .unwrap_or(0 as u64)
+        Identifier::Temp(
+            self.data
+                .keys()
+                .filter_map(|i| match i {
+                    Identifier::Unit(_s) => None,
+                    Identifier::Temp(x) => Some(*x),
+                })
+                .max()
+                .map(|x| x + 1)
+                .unwrap_or(0 as u64),
         )
     }
 }
 impl Display for StackFrame {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "StackFrame {}\n{}\n{}", "{",
-               self.data.iter()
-                   .map(|(k, v)| format!("   {}: {}", k, v))
-                   .reduce(|acc, x| acc + ",\n" + &x)
-                   .unwrap_or("".into()),
-               "}")
+        write!(
+            f,
+            "StackFrame {}\n{}\n{}",
+            "{",
+            self.data
+                .iter()
+                .map(|(k, (t,o))| format!("   {}: {}::{}", k, o, t))
+                .reduce(|acc, x| acc + ",\n" + &x)
+                .unwrap_or("".into()),
+            "}"
+        )
     }
 }
 
@@ -491,8 +719,8 @@ impl From<String> for RuntimeError {
     }
 }
 
-impl Into<EvalResult> for Term {
-    fn into(self) -> EvalResult {
-        EvalResult::Term(self)
+impl From<Value> for EvalResult {
+    fn from(v: Value) -> Self {
+        EvalResult::Term(v)
     }
 }
