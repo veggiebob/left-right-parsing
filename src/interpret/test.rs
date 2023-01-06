@@ -1,7 +1,7 @@
 use crate::interpret::{Interpreter, ProgramRetriever};
 use crate::interpret::definitions::{LanguageObject, ProductObject, Term, TupleObject};
 use crate::interpret::definitions::Term::Nat;
-use crate::lang_obj::{Expr, Identifier, Program, Statement};
+use crate::lang_obj::{Expr, Identifier, ListExprType, Program, Statement};
 
 #[test]
 fn first() {
@@ -39,7 +39,7 @@ fn f1() {
             Statement::Let(a.clone(), Expr::Infix(
                 Box::new(Expr::Variable(f.clone())),
                 " ".to_string(),
-                Box::new(Expr::List(vec![Box::new(Expr::Nat(1.into()))]))
+                Box::new(Expr::List(vec![Box::new(Expr::Nat(1.into()))], ListExprType::Tuple))
             )),
             // return a
             Statement::Ret(Expr::Variable(a.clone()))
@@ -76,7 +76,7 @@ fn f2() {
                 Box::new(Expr::List(vec![
                     Box::new(Expr::Nat(1.into())),
                     Box::new(Expr::Nat(2.into()))
-                ]))
+                ], ListExprType::Tuple))
             )),
             // let b = f(2, a)
             Statement::Let(b.clone(), Expr::Infix(
@@ -85,7 +85,7 @@ fn f2() {
                 Box::new(Expr::List(vec![
                     Box::new(Expr::Nat(2.into())),
                     Box::new(Expr::Variable(a.clone()))
-                ]))
+                ], ListExprType::Tuple))
             )),
             // return a, b
             Statement::Ret(Expr::Infix(
@@ -101,10 +101,12 @@ fn f2() {
 
 #[test]
 fn cond1() {
+    // let a = false
+    // return a ? 1 : 2
     let a = Identifier::Unit("a".to_string());
     let prgm = Program {
         content: vec![
-            Statement::Let(a.clone(), Expr::Bool(true)),
+            Statement::Let(a.clone(), Expr::Bool(false)),
             Statement::Ret(Expr::Conditional(
                 Box::new(Expr::Variable(a.clone())),
                 Box::new(Expr::Nat(1.into())),
@@ -118,6 +120,9 @@ fn cond1() {
 
 #[test]
 fn cond2() {
+    // let a = true
+    // let f = lambda: a ? 3 : 10
+    // return f()
     let a = Identifier::Unit("a".to_string());
     let f = Identifier::Unit("f".to_string());
     let prgm = Program {
@@ -134,7 +139,7 @@ fn cond2() {
             Statement::Ret(Expr::Infix(
                 Box::new(Expr::Variable(f.clone())),
                 " ".to_string(),
-                Box::new(Expr::List(vec![]))
+                Box::new(Expr::List(vec![], ListExprType::Tuple))
             ))
         ]
     };

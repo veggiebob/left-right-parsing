@@ -11,7 +11,7 @@ use crate::ez_parse::funcs::{CatParser, concat};
 use crate::ez_parse::cycles::*;
 
 use crate::funcs::{char_at, expect_str, take, take_while};
-use crate::lang_obj::{Expr, LONat, LOString, ParseError};
+use crate::lang_obj::{Expr, ListExprType, LONat, LOString, ParseError};
 use crate::lang_obj::Expr::Infix;
 
 pub mod structure_parsers;
@@ -629,7 +629,7 @@ impl Parser for ListParser {
                     .parse_any_whitespace(&rest, false, context.clone())
                     .parse_static_text(&rest, consume, context.clone(), "]");
                 if empty_list.0.is_ok() {
-                    return empty_list.map_inner(|_b| Expr::List(vec![])).0
+                    return empty_list.map_inner(|_b| Expr::List(vec![], ListExprType::List)).0
                         .map(|hs|
                         hs.into_iter().map(|(e, used)| (e, used + 1)).collect())
                 }
@@ -708,7 +708,7 @@ impl Parser for ListParser {
                     Ok(finished.into_iter().map(
                         |(exprs, used)| {
                             // add one to used for '['
-                            (Expr::List(exprs.into_iter().map(Box::new).collect()), used + 1)
+                            (Expr::List(exprs.into_iter().map(Box::new).collect(), ListExprType::List), used + 1)
                         }
                     ).collect())
                 } else {

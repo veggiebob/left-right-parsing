@@ -89,7 +89,7 @@ impl Format<Expr> for HTML {
                         gen: self
                     }
                 },
-                Expr::List(es) => {
+                Expr::List(es, _list_type) => {
                     Text {
                         content:
                             format!(
@@ -222,7 +222,7 @@ impl Format<Expr> for JSON {
                     "}"
                 )
             }
-            Expr::List(xs) => {
+            Expr::List(xs, _list_type) => {
                 self.from_vec(xs.iter().map(|x| self.format(x.as_ref())).collect()).content
             },
             Expr::Variable(i) => quote(i.to_string()),

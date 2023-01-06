@@ -257,10 +257,12 @@ impl Term {
             Term::Object(obj) => obj.to_string(),
             Term::Function((params, _ret_t), body, ret, captured) => {
                 format!(
-                    "({}) => <({}\n    return {} )>",
+                    "({}) => {}{}\n    return {} {}",
                     params.iter().map(|(name, _type)| name.to_string()).reduce(|s, i| s + ", " + &i).unwrap_or("".to_string()),
+                    "{",
                     body.iter().map(|stmt| "    ".to_string() + &stmt.to_string()).reduce(|s, st| s + "\n" + &st).unwrap_or("".into()),
-                    ret.to_string()
+                    ret.to_string(),
+                    "}"
                 )
             }
             Term::HeapPointer(id) => format!("Pointer to {}", id),
@@ -312,7 +314,7 @@ impl From<&str> for Type {
 
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.string(false))
+        write!(f, "{}", self.string(true))
     }
 }
 

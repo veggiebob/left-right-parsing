@@ -145,7 +145,7 @@ impl Validator<Expr> for ExpressionValidator {
                 self.validate(left)?;
                 self.validate(right)
             },
-            Expr::List(exprs) => {
+            Expr::List(exprs, _list_type) => {
                 for e in exprs.iter() {
                     self.validate(e)?;
                 }

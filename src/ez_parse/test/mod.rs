@@ -7,7 +7,7 @@ use crate::{Expr, LONatParser, ParseError, ParseMetaData, Parser, LOStringParser
 use crate::Expr::{Nat, Str};
 use crate::ez_parse::funcs::UnionResult::{Left, Right};
 use crate::ez_parse::ops::EZ;
-use crate::lang_obj::{Identifier, LONat, LOString};
+use crate::lang_obj::{Identifier, ListExprType, LONat, LOString};
 
 // these tests work, just make them assert the results
 
@@ -127,7 +127,7 @@ fn ez_list_parser() {
                     vs
                 },
                 None => v
-            }.into_iter().map(Box::new).collect())
+            }.into_iter().map(Box::new).collect(), ListExprType::List)
         })
     ); // ((<expr>\s*,\s*)*)(<expr>?)
 
@@ -155,23 +155,23 @@ fn ez_list_parser() {
                 Nat(LONat { content: 2 }),
                 Nat(LONat { content: 3 })
             ]
-            .into_iter().map(Box::new).collect()), 10)
+            .into_iter().map(Box::new).collect(), ListExprType::List), 10)
     }));
 
     // notice it also handles empty lists, with space inside (or not)
     let source = String::from("[ ]");
     let res = p.parse(&source, true, ParseMetaData::new());
-    assert_eq!(res, Ok(hashset! {(Expr::List(vec![]), 3)}));
+    assert_eq!(res, Ok(hashset! {(Expr::List(vec![], ListExprType::List), 3)}));
 
     // notice it also handles single-element lists
     let source = String::from("[3]");
     let res = p.parse(&source, true, ParseMetaData::new());
-    assert_eq!(res, Ok(hashset! {(Expr::List(vec![Box::new(Expr::Nat(LONat { content: 3 }))]), 3)}));
+    assert_eq!(res, Ok(hashset! {(Expr::List(vec![Box::new(Expr::Nat(LONat { content: 3 }))], ListExprType::List), 3)}));
 
     // hanging separator
     let source = "[4,]".to_string();
     let res = p.parse(&source, true, ParseMetaData::new());
-    assert_eq!(res, Ok(hashset! {(Expr::List(vec![Box::new(Expr::Nat(LONat { content: 4 }))]), 4)}));
+    assert_eq!(res, Ok(hashset! {(Expr::List(vec![Box::new(Expr::Nat(LONat { content: 4 }))], ListExprType::List), 4)}));
 }
 
 #[test]

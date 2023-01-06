@@ -215,7 +215,7 @@ impl FnDefParser {
     /// an identifier, arguments, and an expression
     fn create_base_fndef(ident: Identifier, args: Expr, expr: Expr) -> Option<BaseFnDef> {
         if let Unit(name) = ident {
-            if let Expr::List(expr_args) = args {
+            if let Expr::List(expr_args, _list_type) = args {
                 let mut args = vec![];
                 for arg in expr_args {
                     if let Expr::Infix(ident, _, type_name) = *arg {

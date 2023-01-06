@@ -1,15 +1,19 @@
-use std::any::TypeId;
+use crate::interpret::definitions::Type::Product;
 use crate::interpret::definitions::{
-    HeapData, LanguageObject, ListObject, ProductObject, ProductType, ProductTypeKind, ProgramData,
+    function_param_type_id, function_return_type_id, HeapData, LanguageObject, ListObject,
+    ListType, NamedProductType, ProductObject, ProductType, ProductTypeKind, ProgramData,
     StackData, StackFrame, Term, TupleObject, TupleType, Type,
 };
-use crate::lang_obj::{Expr, FunctionSignature, Identifier, Program, Statement, TypeIdentifier};
+use crate::lang_obj::ListExprType::List;
+use crate::lang_obj::{
+    Expr, FunctionSignature, Identifier, ListExprType, Program, Statement, TypeIdentifier,
+};
+use std::any::TypeId;
 use std::borrow::{Borrow, BorrowMut};
 use std::cell::{Ref, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
-use crate::interpret::definitions::Type::Product;
 
 pub mod definitions;
 
@@ -269,7 +273,7 @@ impl Interpreter {
 
                         Ok(EvalResult::Call(stack_frames, stmts))
                     }
-                    EvalResult::Term(left ) => {
+                    EvalResult::Term(left) => {
                         match self.evaluate(right)? {
                             EvalResult::Call(sfs, mut stmts) => {
                                 let mut sf = self.create_inherited_stack_frame();
@@ -343,7 +347,7 @@ impl Interpreter {
                                     LIST_CONCAT => {
                                         let err = Err(RuntimeError::Semantic(format!("{} operator cannot be used between anything besides lists", LIST_CONCAT)));
                                         if left_type != right_type {
-                                            return Err(RuntimeError::Semantic(format!("List contains multiple conflicting types, {:?} and {:?}", left_type, right_type)))
+                                            return Err(RuntimeError::Semantic(format!("List contains multiple conflicting types, {:?} and {:?}", left_type, right_type)));
                                         }
                                         if let Term::Object(obj) = left_term {
                                             if let LanguageObject::Product(ProductObject::List(
@@ -360,13 +364,15 @@ impl Interpreter {
                                                         left_items.extend(right_items);
                                                         Ok((
                                                             left_type.clone(), // cause they should be the same
-                                                            Term::Object(
-                                                            Box::new(LanguageObject::Product(
-                                                                ProductObject::List(ListObject(
-                                                                    left_items,
-                                                                )),
+                                                            Term::Object(Box::new(
+                                                                LanguageObject::Product(
+                                                                    ProductObject::List(
+                                                                        ListObject(left_items),
+                                                                    ),
+                                                                ),
                                                             )),
-                                                        )).into())
+                                                        )
+                                                            .into())
                                                     } else {
                                                         err
                                                     }
@@ -382,28 +388,46 @@ impl Interpreter {
                                     }
                                     TUPLE_CONCAT => {
                                         let err = Err(RuntimeError::Semantic(format!("{} operator cannot be used between anything besides tuples", TUPLE_CONCAT)));
-                                        let l_type_err = Err(RuntimeError::Semantic(format!("Left type is not tuple!")));
-                                        let r_type_err = Err(RuntimeError::Semantic(format!("Right type is not tuple!")));
-                                        let mut left_types = if let Type::Product(ProductType { data, .. }) = left_type {
-                                            if let ProductTypeKind::Tuple(tup_type) = data {
-                                                Ok(tup_type.types)
-                                            } else { l_type_err }
-                                        } else { l_type_err }?;
-                                        let right_types = if let Type::Product(ProductType { data, .. }) = right_type {
-                                            if let ProductTypeKind::Tuple(tup_type) = data {
-                                                Ok(tup_type.types)
-                                            } else { r_type_err }
-                                        } else { r_type_err }?;
+                                        let l_type_err = Err(RuntimeError::Semantic(format!(
+                                            "Left type is not tuple!"
+                                        )));
+                                        let r_type_err = Err(RuntimeError::Semantic(format!(
+                                            "Right type is not tuple!"
+                                        )));
+                                        let mut left_types =
+                                            if let Type::Product(ProductType { data, .. }) =
+                                                left_type
+                                            {
+                                                if let ProductTypeKind::Tuple(tup_type) = data {
+                                                    Ok(tup_type.types)
+                                                } else {
+                                                    l_type_err
+                                                }
+                                            } else {
+                                                l_type_err
+                                            }?;
+                                        let right_types =
+                                            if let Type::Product(ProductType { data, .. }) =
+                                                right_type
+                                            {
+                                                if let ProductTypeKind::Tuple(tup_type) = data {
+                                                    Ok(tup_type.types)
+                                                } else {
+                                                    r_type_err
+                                                }
+                                            } else {
+                                                r_type_err
+                                            }?;
                                         if let Term::Object(obj) = left_term {
                                             if let LanguageObject::Product(ProductObject::Tuple(
-                                                                               TupleObject(mut left_items),
-                                                                           )) = *obj
+                                                TupleObject(mut left_items),
+                                            )) = *obj
                                             {
                                                 if let Term::Object(obj) = right_term {
                                                     if let LanguageObject::Product(
                                                         ProductObject::Tuple(TupleObject(
-                                                                                right_items,
-                                                                            )),
+                                                            right_items,
+                                                        )),
                                                     ) = *obj
                                                     {
                                                         left_items.extend(right_items);
@@ -411,18 +435,22 @@ impl Interpreter {
                                                         Ok((
                                                             Type::Product(ProductType {
                                                                 name: TypeIdentifier::Anonymous,
-                                                                data: ProductTypeKind::Tuple(TupleType {
-                                                                    length: left_types.len(),
-                                                                    types: left_types
-                                                                })
+                                                                data: ProductTypeKind::Tuple(
+                                                                    TupleType {
+                                                                        length: left_types.len(),
+                                                                        types: left_types,
+                                                                    },
+                                                                ),
                                                             }), // cause they should be the same
-                                                            Term::Object(
-                                                                Box::new(LanguageObject::Product(
-                                                                    ProductObject::List(ListObject(
-                                                                        left_items,
-                                                                    )),
-                                                                )),
-                                                            )).into())
+                                                            Term::Object(Box::new(
+                                                                LanguageObject::Product(
+                                                                    ProductObject::Tuple(
+                                                                        TupleObject(left_items),
+                                                                    ),
+                                                                ),
+                                                            )),
+                                                        )
+                                                            .into())
                                                     } else {
                                                         err
                                                     }
@@ -453,15 +481,19 @@ impl Interpreter {
                                             let type_err = Err(RuntimeError::Interpreter(format!(
                                                 "Wrong type format for argument tuple."
                                             )));
-                                            let right_types = if let Type::Product(ProductType { name, data }) = right_type {
-                                                if let ProductTypeKind::Tuple(tuple_type) = data {
-                                                    Ok(tuple_type.types)
+                                            let right_types =
+                                                if let Type::Product(ProductType { name, data }) =
+                                                    right_type
+                                                {
+                                                    if let ProductTypeKind::Tuple(tuple_type) = data
+                                                    {
+                                                        Ok(tuple_type.types)
+                                                    } else {
+                                                        type_err
+                                                    }
                                                 } else {
                                                     type_err
-                                                }
-                                            } else {
-                                                type_err
-                                            }?;
+                                                }?;
                                             if let Term::Object(o) = right_term {
                                                 if let LanguageObject::Product(
                                                     ProductObject::Tuple(TupleObject(args)),
@@ -477,15 +509,18 @@ impl Interpreter {
                                                         sf.data.insert(cap.clone(), c);
                                                     }
                                                     // insert arguments into stack frame
-                                                    for ((ident, typ), (arg_type, arg)) in
-                                                        params.into_iter().zip(right_types.into_iter().zip(args))
+                                                    for ((ident, typ), (arg_type, arg)) in params
+                                                        .into_iter()
+                                                        .zip(right_types.into_iter().zip(args))
                                                     {
                                                         // todo: check to see if type of parameter matches
                                                         //  arg type
                                                         sf.data.insert(ident, (*arg_type, arg));
                                                     }
-                                                    let mut stmts: Vec<_> =
-                                                        body.into_iter().map(|s| *s.clone()).collect();
+                                                    let mut stmts: Vec<_> = body
+                                                        .into_iter()
+                                                        .map(|s| *s.clone())
+                                                        .collect();
                                                     // add return statement
                                                     stmts.push(Statement::Ret(*ret.clone()));
                                                     Ok(EvalResult::Call(vec![sf], stmts))
@@ -511,7 +546,7 @@ impl Interpreter {
                     }
                 };
             }
-            Expr::List(exprs) => {
+            Expr::List(exprs, list_type) => {
                 let mut exprs = exprs.clone();
                 if let Some(last) = exprs.pop() {
                     let mut sf = self.create_inherited_stack_frame();
@@ -522,18 +557,41 @@ impl Interpreter {
                             sf.data.insert(
                                 last_ident.clone(),
                                 (
-                                    Type::Parametric("list".into(), vec![Box::new(t_type)]),
+                                    Type::Product(ProductType {
+                                        name: TypeIdentifier::Anonymous,
+                                        data: match list_type {
+                                            ListExprType::List => {
+                                                ProductTypeKind::List(ListType(t_type.into()))
+                                            }
+                                            ListExprType::Tuple => {
+                                                ProductTypeKind::Tuple(TupleType {
+                                                    length: 1,
+                                                    types: vec![Box::new(t_type)],
+                                                })
+                                            }
+                                        },
+                                    }),
                                     Term::Object(
-                                        LanguageObject::Product(ProductObject::List(ListObject(
-                                            vec![t_term],
-                                        )))
+                                        match list_type {
+                                            List => LanguageObject::Product(ProductObject::List(
+                                                ListObject(vec![t_term]),
+                                            )),
+                                            ListExprType::Tuple => LanguageObject::Product(
+                                                ProductObject::Tuple(TupleObject(vec![t_term])),
+                                            ),
+                                        }
                                         .into(),
                                     ),
                                 ),
                             );
                             let stmts = vec![Statement::Ret(Expr::Infix(
-                                Box::new(Expr::List(exprs)),
-                                LIST_CONCAT.into(),
+                                Box::new(Expr::List(exprs, list_type.clone())),
+                                if let List = list_type {
+                                    LIST_CONCAT
+                                } else {
+                                    TUPLE_CONCAT
+                                }
+                                .into(),
                                 Box::new(Expr::Variable(last_ident.clone())),
                             ))];
                             Ok(EvalResult::Call(vec![sf], stmts))
@@ -545,11 +603,17 @@ impl Interpreter {
                             // captures return value
                             let capture = Statement::Let(last_ident.clone(), Expr::Str("".into()));
                             let ret = Statement::Ret(Expr::Infix(
-                                Box::new(Expr::List(exprs)),
-                                LIST_CONCAT.into(),
-                                Box::new(Expr::List(vec![Box::new(Expr::Variable(
-                                    last_ident.clone(),
-                                ))])),
+                                Box::new(Expr::List(exprs, list_type.clone())),
+                                if let List = list_type {
+                                    LIST_CONCAT
+                                } else {
+                                    TUPLE_CONCAT
+                                }
+                                .into(),
+                                Box::new(Expr::List(
+                                    vec![Box::new(Expr::Variable(last_ident.clone()))],
+                                    list_type.clone(),
+                                )),
                             ));
                             stmts.extend(vec![capture, ret]);
                             let mut stack_frames = vec![sf];
@@ -558,10 +622,30 @@ impl Interpreter {
                         }
                     }
                 } else {
-                    Ok((Type::Product(ProductType { name: TypeIdentifier::Anonymous, data: ProductTypeKind::Tuple(TupleType { length: 0, types: vec![]})}),
+                    Ok((
+                        Product(ProductType {
+                            name: TypeIdentifier::Anonymous,
+                            data: match list_type {
+                                List => ProductTypeKind::List(ListType(Box::new(Type::unknown()))),
+                                ListExprType::Tuple => ProductTypeKind::Tuple(TupleType {
+                                    length: 0,
+                                    types: vec![],
+                                }),
+                            },
+                        }),
                         Term::Object(
-                        LanguageObject::Product(ProductObject::List(ListObject(vec![]))).into(),
-                    )).into())
+                            match list_type {
+                                List => {
+                                    LanguageObject::Product(ProductObject::List(ListObject(vec![])))
+                                }
+                                ListExprType::Tuple => LanguageObject::Product(
+                                    ProductObject::Tuple(TupleObject(vec![])),
+                                ),
+                            }
+                            .into(),
+                        ),
+                    )
+                        .into())
                 }
             }
             Expr::Variable(ident) => {
@@ -608,41 +692,47 @@ impl Interpreter {
                 return Ok((
                     self.get_func_sig_type(sig),
                     Term::Function(
-                    sig.clone(),
-                    body.clone(),
-                    ret.clone(),
-                    self.top_stack()?.data.clone().into_keys().collect(),
-                )).into())
+                        sig.clone(),
+                        body.clone(),
+                        ret.clone(),
+                        self.top_stack()?.data.clone().into_keys().collect(),
+                    ),
+                )
+                    .into())
             }
             Expr::Lambda(sig, ret) => {
                 return Ok((
                     self.get_func_sig_type(sig),
                     Term::Function(
-                    sig.clone(),
-                    vec![],
-                    ret.clone(),
-                    self.top_stack()?.data.clone().into_keys().collect(),
-                )).into())
+                        sig.clone(),
+                        vec![],
+                        ret.clone(),
+                        self.top_stack()?.data.clone().into_keys().collect(),
+                    ),
+                )
+                    .into())
             }
         }
     }
 
     fn get_type(&self, type_id: &TypeIdentifier) -> Type {
         Type::Unit(type_id.clone()) // technically works, won't work though
-        // todo: look up type to find out what the actual type is
+                                    // todo: look up type to find out what the actual type is
     }
 
     fn get_func_sig_type(&self, sig: &FunctionSignature) -> Type {
         let (params, ret_t) = sig;
-        Type::Parametric(
-            "function".into(),
-            vec![
-                ret_t.as_ref().map(|t| self.get_type(t)).unwrap_or(Type::unknown())
-            ].into_iter().chain(
-                params.iter()
-                    .map(|(_id, typ)| typ.as_ref().map(|t| self.get_type(t)).unwrap_or(Type::unknown())))
-                .map(Box::new).collect()
-        )
+        Product(ProductType {
+            name: "function".into(),
+            data: ProductTypeKind::Named(NamedProductType {
+                fields: hashmap! {
+                    function_return_type_id() => Box::new(ret_t.as_ref().map(|t| Type::Unit(t.clone())).unwrap_or(Type::unknown())),
+                    function_param_type_id() => Box::new(
+                        params.iter().map(|(_i, t)| t.as_ref().map(|t| t.clone()).map(Type::Unit).unwrap_or(Type::unknown())).collect::<Vec<_>>().into()
+                    )
+                },
+            }),
+        })
     }
 
     fn top_stack(&self) -> Result<&StackFrame, RuntimeError> {
@@ -699,7 +789,7 @@ impl Display for StackFrame {
             "{",
             self.data
                 .iter()
-                .map(|(k, (t,o))| format!("   {}: {}::{}", k, o, t))
+                .map(|(k, (t, o))| format!("   {}: {}::{}", k, o, t))
                 .reduce(|acc, x| acc + ",\n" + &x)
                 .unwrap_or("".into()),
             "}"

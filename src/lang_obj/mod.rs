@@ -37,7 +37,7 @@ pub enum Expr {
     /// regex: \d+
     Nat(LONat),
 
-    /// Represents a string. Currently does not support escaped strings inside such as `"\""`
+    /// Represents a string. Currently does not support escaped quotes inside such as `"\""`
     Str(LOString),
 
     /// An operator between 2 expressions.
@@ -45,10 +45,10 @@ pub enum Expr {
     /// Note that all operators are right-associative
     Infix(Box<Expr>, String, Box<Expr>),
 
-    /// A list of expressions.
+    /// A variable-length list of expressions.
     /// pseudo-regex syntax: \[(<expr><sep>\s*)*<expr>\]
     /// where the separator can be any `char`
-    List(Vec<Box<Expr>>),
+    List(Vec<Box<Expr>>, ListExprType),
 
     /// Any other symbol that would be used to identify a local variable
     Variable(Identifier),
@@ -66,6 +66,16 @@ pub enum Expr {
     /// Pure (and should be guaranteed to!)
     /// signature, return
     Lambda(FunctionSignature, Box<Expr>)
+}
+
+/// This type exists to signal in what way
+/// the list of expressions should be interpreted.
+/// There are many contexts in which lists of expressions are used,
+/// so we need to signal which kind it is.
+#[derive(Eq, PartialEq, Debug, Hash, Clone)]
+pub enum ListExprType {
+    List, // traditionally, [<expr>, <expr>, ...]
+    Tuple // traditionally, (<expr>, <expr>, ...)
 }
 
 #[derive(Eq, PartialEq, Debug, Clone)]
@@ -253,7 +263,7 @@ impl ToString for Expr {
             Expr::Infix(left, infix, right) => {
                 format!("({} {} {})", left.to_string(), infix.clone(), right.to_string())
             }
-            Expr::List(xs) => {
+            Expr::List(xs, _list_type) => {
                 format!("[{}]", xs.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(", "))
             }
             Expr::Variable(x) => x.to_string(),
