@@ -21,6 +21,7 @@ pub struct LONat {
     pub content: u64
 }
 
+/// (vec<(identifier, opt<type_ident>)>, opt<type_ident>)
 pub type FunctionSignature = (Box<Vec<(Identifier, Option<TypeIdentifier>)>>, Option<TypeIdentifier>);
 
 pub type FunctionBody = Vec<Box<Statement>>;

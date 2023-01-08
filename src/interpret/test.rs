@@ -146,3 +146,25 @@ fn cond2() {
     let mut interp = Interpreter::new(prgm, ProgramRetriever {});
     assert_eq!(Ok(Some(Nat(3))), interp.start().map(|val| val.map(|(_type, term)| term)));
 }
+
+#[test]
+fn test_print_1() {
+    // not really sure how to actually test this since
+    // the goal output is printed to stdout
+    // 
+    let prgm = Program {
+        content: vec![
+            Statement::Impure(Expr::Infix(
+                Box::new(Expr::Variable("print".into())),
+                " ".to_string(),
+                Box::new(Expr::List(
+                    vec![Expr::Str("hello world!".into())]
+                        .into_iter().map(Box::new).collect(),
+                    ListExprType::Tuple
+                ))
+            ))
+        ]
+    };
+    let mut interp = Interpreter::new(prgm, ProgramRetriever {});
+    assert_eq!(Ok(None), interp.start());
+}

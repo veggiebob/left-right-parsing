@@ -3,6 +3,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
+use crate::interpret::stdlib::{PureFunc, PureFuncPackage};
 use crate::interpret::Value;
 use crate::lang_obj::{Expr, FunctionBody, FunctionSignature, Identifier, Statement, TypeIdentifier};
 
@@ -41,10 +42,19 @@ pub struct ProgramData {
     pub types: HashMap<TypeIdentifier, Type>,
 }
 
-type HeapID = usize;
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
+pub enum HeapID {
+    /// whatever you want
+    ToValue(usize),
+    /// package, func name
+    ToFunc(Identifier, Identifier)
+}
 
-pub struct HeapData {
-    pub data: HashMap<HeapID, Value>
+pub struct HeapData<'a> {
+    pub data: HashMap<HeapID, Value>,
+    /// give access to a collection of rust functionality
+    pub(crate) pure_funcs: HashMap<Identifier, PureFuncPackage>,
+    pub func_ptrs: HashMap<HeapID, &'a PureFunc>
 }
 
 #[derive(Debug, PartialEq)]
@@ -71,6 +81,7 @@ pub fn function_type_param_type_id() -> Identifier {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Type {
     Unit(TypeIdentifier),
+    Pointer(Box<Type>),
     /// Parameterized Types
     /// function types: return, params... (in progress)
     ///
@@ -113,6 +124,7 @@ pub enum ProductObject {
 /// Both variants are equivalent.
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ProductTypeKind {
+    /// empty tuple
     None, // empty tuple??
     Tuple(TupleType),
     List(ListType),
@@ -196,6 +208,10 @@ impl ProductObject {
 }
 
 impl Term {
+    pub fn empty_tuple() -> Term {
+        Term::Object(Box::new(LanguageObject::Product(ProductObject::None)))
+    }
+
     pub fn get_anon_type(&self) -> Type {
         match &self {
             Term::Bool(_) => Type::Unit("bool".into()),
@@ -323,9 +339,17 @@ impl Type {
         Type::Unit(TypeIdentifier::Anonymous)
     }
 
+    pub fn empty_tuple() -> Type {
+        Type::Product(ProductType {
+            name: TypeIdentifier::Anonymous,
+            data: ProductTypeKind::None
+        })
+    }
+
     pub fn string(&self, inline: bool) -> String {
         match &self {
             Type::Unit(t) => format!("{}", t),
+            Type::Pointer(t) => format!("&{}", *t),
             Type::Parametric(name, types) => format!(
                 "{}<{}>",
                 name,
@@ -402,5 +426,17 @@ impl From<Vec<Type>> for Type {
                 types: types.into_iter().map(Box::new).collect()
             })
         })
+    }
+}
+
+impl HeapID {
+    fn string(&self) -> String {
+        format!("{:?}", self)
+    }
+}
+
+impl Display for HeapID {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.string())
     }
 }

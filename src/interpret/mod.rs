@@ -1,9 +1,5 @@
 use crate::interpret::definitions::Type::Product;
-use crate::interpret::definitions::{
-    function_param_type_id, function_return_type_id, HeapData, LanguageObject, ListObject,
-    ListType, NamedProductType, ProductObject, ProductType, ProductTypeKind, ProgramData,
-    StackData, StackFrame, Term, TupleObject, TupleType, Type,
-};
+use crate::interpret::definitions::{function_param_type_id, function_return_type_id, HeapData, HeapID, LanguageObject, ListObject, ListType, NamedProductType, ProductObject, ProductType, ProductTypeKind, ProgramData, StackData, StackFrame, Term, TupleObject, TupleType, Type};
 use crate::lang_obj::ListExprType::List;
 use crate::lang_obj::{
     Expr, FunctionSignature, Identifier, ListExprType, Program, Statement, TypeIdentifier,
@@ -14,8 +10,10 @@ use std::cell::{Ref, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
+use crate::interpret::stdlib::{print, PureFuncPackage, PureFunc, FuncQuery, QueryResponse};
 
 pub mod definitions;
+pub mod stdlib;
 
 #[cfg(test)]
 mod test;
@@ -55,12 +53,12 @@ pub enum InterpreterAction {
     Call(Vec<StackFrame>, Vec<Statement>),
 }
 
-pub struct Interpreter {
+pub struct Interpreter<'a> {
     /// a stack containing scope data and variables
     pub stack: StackData,
 
     /// a heap
-    pub heap: HeapData,
+    pub heap: HeapData<'a>,
 
     /// a stack containing the remaining statements left to process
     /// in the program
@@ -80,15 +78,17 @@ pub struct Interpreter {
 const LIST_CONCAT: &str = "«list_concatenator»";
 const TUPLE_CONCAT: &str = "«tuple_concatenator»";
 
-impl Interpreter {
-    pub fn new(program: Program, program_retriever: ProgramRetriever) -> Interpreter {
-        Interpreter {
+impl<'a> Interpreter<'a> {
+    pub fn new(program: Program, program_retriever: ProgramRetriever) -> Interpreter<'a> {
+        let mut interpreter = Interpreter {
             // there is no such thing as a main function! ha!
             // no, we run this program, exactly as we have been told.
             stack: StackData(vec![]),
             instruction_stack: vec![],
             heap: HeapData {
                 data: HashMap::new(),
+                pure_funcs: HashMap::new(),
+                func_ptrs: HashMap::new()
             },
             program_data: ProgramData {
                 types: HashMap::new(),
@@ -96,7 +96,17 @@ impl Interpreter {
             },
             program,
             program_retriever,
-        }
+        };
+        interpreter.load_func_pkg("rust::stdlib".into(), PureFuncPackage {
+            funcs: hashmap! {
+                "print".into() => Box::new(print) as PureFunc
+            }
+        });
+        interpreter
+    }
+
+    pub fn load_func_pkg(&mut self, identifier: Identifier, pkg: PureFuncPackage) {
+        self.heap.pure_funcs.insert(identifier, pkg);
     }
 
     pub fn start(&mut self) -> Result<Option<Value>, RuntimeError> {
@@ -128,26 +138,26 @@ impl Interpreter {
                 let _lost = self.stack.0.pop(); // drop the top stack frame
             }
 
-            println!("------");
-            println!(
-                "Stack Frames:\n{}",
-                self.stack
-                    .0
-                    .iter()
-                    .map(|sf| format!("{}", sf))
-                    .reduce(|acc, x| acc + "\n" + &x)
-                    .unwrap_or("".into())
-            );
-            println!(
-                "Instructions: \n{}",
-                self.instruction_stack
-                    .iter()
-                    .map(ToString::to_string)
-                    .rev()
-                    .reduce(|mut x, acc| x + ";\n" + &acc)
-                    .unwrap_or("<none>".to_string())
-            );
-            println!("Return Value: {:?}", return_value);
+            // println!("------");
+            // println!(
+            //     "Stack Frames:\n{}",
+            //     self.stack
+            //         .0
+            //         .iter()
+            //         .map(|sf| format!("{}", sf))
+            //         .reduce(|acc, x| acc + "\n" + &x)
+            //         .unwrap_or("".into())
+            // );
+            // println!(
+            //     "Instructions: \n{}",
+            //     self.instruction_stack
+            //         .iter()
+            //         .map(ToString::to_string)
+            //         .rev()
+            //         .reduce(|mut x, acc| x + ";\n" + &acc)
+            //         .unwrap_or("<none>".to_string())
+            // );
+            // println!("Return Value: {:?}", return_value);
         }
 
         Ok(return_value)
@@ -530,6 +540,64 @@ impl Interpreter {
                                             } else {
                                                 err
                                             }
+                                        } else if let Term::HeapPointer(ref ptr) = left_term {
+                                            if let HeapID::ToFunc(pkg, ident) = ptr {
+                                                if let Some(f) = self.heap.pure_funcs.get(pkg)
+                                                    .and_then(|pkg| pkg.funcs.get(ident)) {
+                                                    let type_err = Err(RuntimeError::Semantic(format!(
+                                                        "Arguments to function were the wrong type"
+                                                    )));
+                                                    let term_err = Err(RuntimeError::Semantic(format!(
+                                                        "Arguments to function were not a tuple"
+                                                    )));
+                                                    let right_types =
+                                                        if let Type::Product(ProductType { name, data }) =
+                                                            right_type
+                                                        {
+                                                            if let ProductTypeKind::Tuple(tuple_type) = data
+                                                            {
+                                                                Ok(tuple_type.types)
+                                                            } else {
+                                                                type_err
+                                                            }
+                                                        } else {
+                                                            type_err
+                                                        }?;
+                                                    if let Term::Object(o) = right_term {
+                                                        if let LanguageObject::Product(
+                                                            ProductObject::Tuple(TupleObject(args)),
+                                                        ) = *o
+                                                        {
+                                                            let arg_values = right_types.into_iter()
+                                                                .map(|a| *a)
+                                                                .zip(args).collect::<Vec<_>>();
+                                                            let res = (*f)(FuncQuery::Call(arg_values));
+                                                            if let QueryResponse::Ret(ret) = res {
+                                                                Ok(EvalResult::Term(ret?))
+                                                            } else {
+                                                                Err(RuntimeError::Interpreter(format!(
+                                                                    "Pure func {}::{} did not return the correct response!",
+                                                                    pkg, ident
+                                                                )))
+                                                            }
+                                                        } else {
+                                                            term_err
+                                                        }
+                                                    } else {
+                                                        term_err
+                                                    }
+                                                }
+                                                else {
+                                                    Err(RuntimeError::Interpreter(format!(
+                                                        "Unable to find function pointer {}::{}",
+                                                        pkg, ident
+                                                    )))
+                                                }
+                                            } else {
+                                                Err(RuntimeError::Semantic(format!(
+                                                    "Expected left side heap pointer to point to function"
+                                                )))
+                                            }
                                         } else {
                                             Err(RuntimeError::Semantic(format!(
                                                 "Expected left side of operation to be a function"
@@ -650,18 +718,36 @@ impl Interpreter {
             }
             Expr::Variable(ident) => {
                 // look it up in stack
-                let value = self
+                let missing_err = RuntimeError::Semantic(format!(
+                    "Unrecognized variable: <<{:?}>>",
+                    ident
+                ));
+                let mut value = self
                     .stack
                     .0
                     .last()
                     .ok_or(RuntimeError::Interpreter("Empty stack??".into()))?
                     .data
-                    .get(ident)
-                    .ok_or(RuntimeError::Semantic(format!(
-                        "Unrecognized variable: <<{:?}>>",
-                        ident
-                    )))?;
-                return Ok(EvalResult::Term(value.clone()));
+                    .get(ident).map(|x| x.clone());
+                for (pkg_ident, pkg) in self.heap.pure_funcs.iter() {
+                    if let Some(f) = pkg.funcs.get(ident) {
+                        value = Some((
+                            Type::Pointer(Box::new(Product(ProductType {
+                                name: "function".into(),
+                                data: ProductTypeKind::Named(NamedProductType {
+                                    fields: hashmap! {
+                                        // todo: use function (f) to determine type
+                                        function_param_type_id() => Box::new(Type::unknown()),
+                                        function_return_type_id() => Box::new(Type::unknown())
+                                    }
+                                })
+                            }))),
+                            Term::HeapPointer(HeapID::ToFunc(pkg_ident.clone(), ident.clone()))
+                        ))
+                    }
+                }
+                let value = value.ok_or(missing_err)?;
+                return Ok(EvalResult::Term(value));
             }
             Expr::Conditional(cond, then, otherwise) => match self.evaluate(cond)? {
                 EvalResult::Term((_type, t)) => {
