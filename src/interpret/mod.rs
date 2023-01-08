@@ -10,7 +10,7 @@ use std::cell::{Ref, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
-use crate::interpret::stdlib::{print, PureFuncPackage, PureFunc, FuncQuery, QueryResponse};
+use crate::interpret::stdlib::{print, PureFuncPackage, PureFunc, FuncQuery, QueryResponse, eprint, input};
 
 pub mod definitions;
 pub mod stdlib;
@@ -99,7 +99,9 @@ impl<'a> Interpreter<'a> {
         };
         interpreter.load_func_pkg("rust::stdlib".into(), PureFuncPackage {
             funcs: hashmap! {
-                "print".into() => Box::new(print) as PureFunc
+                "print".into() => Box::new(print) as PureFunc,
+                "eprint".into() => Box::new(eprint) as PureFunc,
+                "input".into() => Box::new(input) as PureFunc
             }
         });
         interpreter
@@ -604,6 +606,7 @@ impl<'a> Interpreter<'a> {
                                             )))
                                         }
                                     }
+                                    "=" | "==" => self.get_equal((left_type, left_term), (right_type, right_term)),
                                     _ => Err(RuntimeError::Semantic(format!(
                                         "Unrecognized operator: '{}'",
                                         op
@@ -848,6 +851,13 @@ impl<'a> Interpreter<'a> {
                 sf
             }
         }
+    }
+
+    fn get_equal(&self, left: Value, right: Value) -> Result<EvalResult, RuntimeError> {
+        let (left_type, left_term) = left;
+        let (right_type, right_term) = right;
+
+        Err(RuntimeError::Semantic("not compatible".to_string()))
     }
 }
 

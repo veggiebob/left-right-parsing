@@ -1,5 +1,5 @@
 use crate::interpret::{Interpreter, ProgramRetriever};
-use crate::interpret::definitions::{LanguageObject, ProductObject, Term, TupleObject};
+use crate::interpret::definitions::{LanguageObject, ProductObject, Term, TupleObject, Type};
 use crate::interpret::definitions::Term::Nat;
 use crate::lang_obj::{Expr, Identifier, ListExprType, Program, Statement};
 
@@ -151,7 +151,7 @@ fn cond2() {
 fn test_print_1() {
     // not really sure how to actually test this since
     // the goal output is printed to stdout
-    // 
+    //
     let prgm = Program {
         content: vec![
             Statement::Impure(Expr::Infix(
@@ -162,9 +162,36 @@ fn test_print_1() {
                         .into_iter().map(Box::new).collect(),
                     ListExprType::Tuple
                 ))
+            )),
+            Statement::Impure(Expr::Infix(
+                Box::new(Expr::Variable("eprint".into())),
+                " ".to_string(),
+                Box::new(Expr::List(
+                    vec![Expr::Str("error!".into())]
+                        .into_iter().map(Box::new).collect(),
+                    ListExprType::Tuple
+                ))
             ))
         ]
     };
     let mut interp = Interpreter::new(prgm, ProgramRetriever {});
     assert_eq!(Ok(None), interp.start());
+}
+
+#[test]
+fn test_input_1() {
+    // run configuration should use "src/interpret/test-inputs/test-input-1" as input
+    let a = Identifier::Unit("a".to_string());
+    let prgm = Program {
+        content: vec![
+            Statement::Let(a.clone(), Expr::Infix(
+                Box::new(Expr::Variable("input".into())),
+                " ".into(),
+                Box::new(Expr::List(vec![], ListExprType::Tuple))
+            )),
+            Statement::Ret(Expr::Variable(a))
+        ]
+    };
+    let mut interp = Interpreter::new(prgm, ProgramRetriever {});
+    assert_eq!((Type::Unit("string".into()), Term::String("hello world!".to_string())), interp.start().unwrap().unwrap())
 }
