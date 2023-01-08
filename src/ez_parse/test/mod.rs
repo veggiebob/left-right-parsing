@@ -9,6 +9,9 @@ use crate::ez_parse::funcs::UnionResult::{Left, Right};
 use crate::ez_parse::ops::EZ;
 use crate::lang_obj::{Identifier, ListExprType, LONat, LOString};
 
+#[cfg(test)]
+mod json;
+
 // these tests work, just make them assert the results
 
 #[test]
@@ -327,6 +330,3 @@ fn deep_expr_test() {
     let res = expr.borrow().parse(&source, true, ParseMetaData::new());
     println!("{:?}", res);
 }
-
-#[cfg(test)]
-mod json;

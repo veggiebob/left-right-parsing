@@ -35,8 +35,11 @@ pub fn print(q: FuncQuery) -> QueryResponse {
                    format!("print argument must be of type 'string'")
                ));
                if let Term::String(s) = arg_term {
-                   // todo: unify string type
-                   // if Type::Unit("string".into()) != arg_type {
+                   // actually, we don't care
+                   // what if we are using a type alias of string
+                   // like type Text = string
+                   // then it should be fine, right? as long as the actual type is a string
+                   // if Type::string() != arg_type {
                    //     Err(RuntimeError::Interpreter(format!(
                    //         "Mismatched term and type! Bad!"
                    //     )))
@@ -113,7 +116,7 @@ pub fn input(q: FuncQuery) -> QueryResponse {
                let mut s = String::new();
                match stdin().read_line(&mut s) {
                    Ok(_) => Ok((
-                       Type::Unit("string".into()),
+                       Type::string(),
                        Term::String(s)
                    )),
                    Err(e) => Err(RuntimeError::Semantic(format!("input() error: {}", e)))

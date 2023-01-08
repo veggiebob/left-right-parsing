@@ -10,6 +10,7 @@ use std::cell::{Ref, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
+use crate::interpret::RuntimeError::Semantic;
 use crate::interpret::stdlib::{print, PureFuncPackage, PureFunc, FuncQuery, QueryResponse, eprint, input};
 
 pub mod definitions;
@@ -337,25 +338,10 @@ impl<'a> Interpreter<'a> {
                                         ),
                                     )
                                         .into()),
-                                    "+" => {
-                                        if let Term::Nat(x) = left_term {
-                                            if let Term::Nat(y) = right_term {
-                                                Ok((
-                                                    left_type, // assuming they are the same type
-                                                    Term::Nat(x + y),
-                                                )
-                                                    .into())
-                                            } else {
-                                                Err(RuntimeError::Semantic(format!(
-                                                    "Right side of + expression must be a number"
-                                                )))
-                                            }
-                                        } else {
-                                            Err(RuntimeError::Semantic(format!(
-                                                "Left side of + expression must be a number"
-                                            )))
-                                        }
-                                    }
+                                    "+" => self.get_added((left_type, left_term), (right_type, right_term)),
+                                    "-" => self.get_subtracted((left_type, left_term), (right_type, right_term)),
+                                    "=" | "==" => self.get_equal((left_type, left_term), (right_type, right_term)),
+                                    "<" => self.get_lt((left_type, left_term), (right_type, right_term)),
                                     LIST_CONCAT => {
                                         let err = Err(RuntimeError::Semantic(format!("{} operator cannot be used between anything besides lists", LIST_CONCAT)));
                                         if left_type != right_type {
@@ -606,7 +592,6 @@ impl<'a> Interpreter<'a> {
                                             )))
                                         }
                                     }
-                                    "=" | "==" => self.get_equal((left_type, left_term), (right_type, right_term)),
                                     _ => Err(RuntimeError::Semantic(format!(
                                         "Unrecognized operator: '{}'",
                                         op
@@ -856,8 +841,85 @@ impl<'a> Interpreter<'a> {
     fn get_equal(&self, left: Value, right: Value) -> Result<EvalResult, RuntimeError> {
         let (left_type, left_term) = left;
         let (right_type, right_term) = right;
+        if left_term.is_atomic() && right_term.is_atomic() {
+            Ok(EvalResult::Term((Type::bool(), Term::Bool(left_term == right_term))))
+        } else {
+            Err(RuntimeError::Semantic(format!(
+                "{:?} and {:?} are not comparable by (=) or (==)",
+                left_term, right_term
+            )))
+        }
+    }
 
-        Err(RuntimeError::Semantic("not compatible".to_string()))
+    fn get_lt(&self, left: Value, right: Value) -> Result<EvalResult, RuntimeError> {
+        let (left_type, left_term) = left;
+        let (right_type, right_term) = right;
+        if left_term.is_numeric() && right_term.is_numeric() {
+            if let Term::Nat(x) = left_term {
+                if let Term::Nat(y) = right_term {
+                    Ok(EvalResult::Term((Type::bool(), Term::Bool(x < y))))
+                } else {
+                    Err(RuntimeError::Semantic(format!("Cannot compute (Nat) < (Float)")))
+                }
+            } else if let Term::Float(x) = left_term {
+                if let Term::Float(y) = right_term {
+                    Ok(EvalResult::Term((Type::bool(), Term::Bool(x < y))))
+                } else {
+                    Err(Semantic(format!("Cannot compute (Float) < (Nat)")))
+                }
+            } else {
+                Err(RuntimeError::Interpreter(format!("Someone added some number types I forgot about")))
+            }
+        } else {
+            Err(RuntimeError::Semantic(format!(
+                "{:?} and {:?} are not comparable by (<)",
+                left_term, right_term
+            )))
+        }
+    }
+
+    fn get_added(&self, left: Value, right: Value) -> Result<EvalResult, RuntimeError> {
+        let (left_type, left_term) = left;
+        let (right_type, right_term) = right;
+        if let Term::Nat(x) = left_term {
+            if let Term::Nat(y) = right_term {
+                Ok((
+                    left_type, // assuming they are the same type
+                    Term::Nat(x + y),
+                )
+                    .into())
+            } else {
+                Err(RuntimeError::Semantic(format!(
+                    "Right side of + expression must be a number"
+                )))
+            }
+        } else {
+            Err(RuntimeError::Semantic(format!(
+                "Left side of + expression must be a number"
+            )))
+        }
+    }
+
+    fn get_subtracted(&self, left: Value, right: Value) -> Result<EvalResult, RuntimeError> {
+        let (left_type, left_term) = left;
+        let (right_type, right_term) = right;
+        if let Term::Nat(x) = left_term {
+            if let Term::Nat(y) = right_term {
+                Ok((
+                    left_type, // assuming they are the same type
+                    Term::Nat(x - y),
+                )
+                    .into())
+            } else {
+                Err(RuntimeError::Semantic(format!(
+                    "Right side of - expression must be a number"
+                )))
+            }
+        } else {
+            Err(RuntimeError::Semantic(format!(
+                "Left side of - expression must be a number"
+            )))
+        }
     }
 }
 

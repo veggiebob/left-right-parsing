@@ -208,16 +208,35 @@ impl ProductObject {
 }
 
 impl Term {
+    /// returns true if the type is represented solely in rust
+    pub fn is_atomic(&self) -> bool {
+        match self {
+            Term::Bool(_) => true,
+            Term::String(_) => true,
+            Term::Nat(_) => true,
+            Term::Float(_) => true,
+            _ => false
+        }
+    }
+
+    pub fn is_numeric(&self) -> bool {
+        match self {
+            Term::Nat(_) => true,
+            Term::Float(_) => true,
+            _ => false
+        }
+    }
+
     pub fn empty_tuple() -> Term {
         Term::Object(Box::new(LanguageObject::Product(ProductObject::None)))
     }
 
     pub fn get_anon_type(&self) -> Type {
         match &self {
-            Term::Bool(_) => Type::Unit("bool".into()),
-            Term::String(_) => Type::Unit("string".into()),
-            Term::Nat(_) => Type::Unit("nat".into()),
-            Term::Float(_) => Type::Unit("float".into()),
+            Term::Bool(_) => Type::bool(),
+            Term::String(_) => Type::string(),
+            Term::Nat(_) => Type::nat(),
+            Term::Float(_) => Type::float(),
             Term::Token(t) => Type::Unit(t.into()), // should a token be its own type??
             Term::Object(o) => {
                 match o.as_ref() {
@@ -330,7 +349,7 @@ impl From<&str> for Type {
 
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.string(true))
+        write!(f, "{}", self.as_string(true))
     }
 }
 
@@ -346,7 +365,25 @@ impl Type {
         })
     }
 
-    pub fn string(&self, inline: bool) -> String {
+    pub fn string() -> Type {
+        Type::Unit("string".into())
+    }
+
+    pub fn bool() -> Type {
+        Type::Unit("bool".into())
+    }
+
+    pub fn nat() -> Type {
+        Type::Unit("nat".into())
+    }
+
+    pub fn float() -> Type {
+        Type::Unit("float".into())
+    }
+
+
+
+    pub fn as_string(&self, inline: bool) -> String {
         match &self {
             Type::Unit(t) => format!("{}", t),
             Type::Pointer(t) => format!("&{}", *t),
@@ -395,10 +432,10 @@ impl ProductType {
 impl ProductTypeKind {
     pub fn string(&self, inline: bool) -> String {
         match self {
-            ProductTypeKind::List(ListType(typ)) => format!("[{}]", typ.string(inline)),
+            ProductTypeKind::List(ListType(typ)) => format!("[{}]", typ.as_string(inline)),
             ProductTypeKind::None => "()".to_string(),
             ProductTypeKind::Tuple(tup) => format!(
-                "({})", remap(&tup.types, |x| x.string(true), ", ", "")
+                "({})", remap(&tup.types, |x| x.as_string(true), ", ", "")
             ),
             ProductTypeKind::Named(named) => format!(
                 " {}{}{}{}{}",

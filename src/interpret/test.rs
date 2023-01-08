@@ -193,5 +193,75 @@ fn test_input_1() {
         ]
     };
     let mut interp = Interpreter::new(prgm, ProgramRetriever {});
-    assert_eq!((Type::Unit("string".into()), Term::String("hello world!".to_string())), interp.start().unwrap().unwrap())
+    assert_eq!((Type::string(), Term::String("hello world!".to_string())), interp.start().unwrap().unwrap())
+}
+
+
+fn fibonacci (x: u32) -> u32 {
+    if x < 2 {
+        1
+    } else {
+        fibonacci(x - 1) + fibonacci(x - 2)
+    }
+}
+#[test]
+fn fibonacci_test_1() {
+
+    let f = || Identifier::Unit("fib".to_string());
+    let x = || Identifier::Unit("x".to_string());
+    let out = || Identifier::Unit("out".to_string());
+    let prgm = Program {
+        /*
+            1. f x | x < 2 => 1
+                   | otherwise = f (x-1) + f (x-2)
+            2. let out = f 10
+            3. print(out)
+            4. return out
+
+         */
+        content: vec![
+            Statement::Let(f(), Expr::Lambda((Box::new(vec![(x(), None)]), None), Box::new(
+                Expr::Conditional(
+                    // if x < 2
+                    Box::new(Expr::Infix(
+                        Box::new(Expr::Variable(x())),
+                        "<".into(),
+                        Box::new(Expr::Nat(2.into()))
+                    )),
+                    // then 1
+                    Box::new(Expr::Nat(1.into())),
+                    // else f(x - 1) + f(x - 2)
+                    Box::new(Expr::Infix(
+                        // f(x - 1)
+                        Box::new(Expr::Infix(
+                            Expr::Variable(f()).into(),
+                            " ".into(),
+                            // (x - 1,)
+                            Expr::List(vec![Box::new(Expr::Infix(Box::new(Expr::Variable(x())), "-".into(), Expr::Nat(1.into()).into()))], ListExprType::Tuple).into()
+                        )),
+                        "+".to_string(),
+                        // f(x - 2)
+                        Box::new(Expr::Infix(
+                            Expr::Variable(f()).into(),
+                            " ".into(),
+                            // (x - 2,)
+                            Expr::List(vec![Box::new(Expr::Infix(Box::new(Expr::Variable(x())), "-".into(), Expr::Nat(2.into()).into()))], ListExprType::Tuple).into()
+                        ))
+                    ))
+                )
+            ))),
+            // let out = f 10
+            Statement::Let(
+                out(),
+                Expr::Infix(
+                    Box::new(Expr::Variable(f())),
+                    " ".into(),
+                    Box::new(Expr::List(vec![Box::new(Expr::Nat(10.into()))], ListExprType::Tuple))
+                )
+            ),
+            Statement::Ret(Expr::Variable(out()))
+        ]
+    };
+    let mut interp = Interpreter::new(prgm, ProgramRetriever {});
+    assert_eq!(Ok(Some((Type::nat(), Nat(fibonacci(10).into())))), interp.start())
 }
