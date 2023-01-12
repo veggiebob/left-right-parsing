@@ -109,13 +109,18 @@ impl<P1: Parser<Output=I1>, P2: Parser<Output=I2>, I1: Hash + Eq + Clone, I2: Ha
     type Output = O;
     fn parse(&self, content: &String, consume: bool, context: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
         // println!("Cat parser with {} left, no-width={}", content, &context.was_infix);
-        let pr = ParseResult(self.p1.as_ref().borrow().parse(content, false, context.clone().add_decision(ParseDecision::Recur)));
+        let pr = ParseResult(self.p1.as_ref().borrow().parse(content, false, context.clone()
+            .add_decision(ParseDecision::Recur)));
         let meta = context.increment_depth();
         let res = pr.chain(
             content,
             consume,
-            meta,
-            chainable(|a, rest, c| self.p2.as_ref().borrow().parse(&rest, consume, c)),
+            meta.progress(),
+            chainable(|a, rest, c| {
+                self.p2.as_ref().borrow().parse(&rest, consume, if rest.len() < content.len() {
+                    c.progress()
+                } else { c })
+            }),
             &self.joiner);
         res.0
     }
@@ -156,7 +161,7 @@ impl<P1: Parser, P2: Parser> Parser for UnionParser<P1, P2>
                         // p1 had results, but not p2
                         ParseResult(Ok(r1)).map_inner(UnionResult::Left).0,
                     Ok(r2) => {
-                        // cartesian product
+                        // include both, separate using enum
                         let mut left: HashSet<_> = r1.into_iter()
                             .map(|(x, len)| (UnionResult::Left(x.clone()), len)).collect();
                         let right: HashSet<_> = r2.into_iter()
@@ -194,8 +199,9 @@ impl<P: Parser> Parser for KleeneParser<P>
         let mut all_parses = hashset!{(vec![], 0)};
 
         {
-            let meta = context.increment_depth();
+            let meta = context.increment_depth().add_decision(ParseDecision::Recur);
             // original parse
+            // add decision? .add_decision(ParseDecision::Recur)
             let mut res = ParseResult(self.p.as_ref().borrow().parse(content, false, meta.clone()))
                 .map_inner(|x| vec![x]).0;
             // if the original parse works...
@@ -208,7 +214,12 @@ impl<P: Parser> Parser for KleeneParser<P>
                     match take(content, *len) {
                         Some((_before, rest)) => {
                             // parse the next, maybe. The inductive step.
-                            let next_res = self.p.as_ref().borrow().parse(&rest, false, meta.clone());
+                            let next_res = self.p.as_ref().borrow().parse(
+                                &rest,
+                                false,
+                                if *len > 0 {
+                                    meta.clone().progress()
+                                } else { meta.clone() });
                             match next_res {
                                 Ok(hs2) => {
                                     for (e, used) in hs2 {

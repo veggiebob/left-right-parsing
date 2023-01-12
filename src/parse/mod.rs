@@ -344,6 +344,8 @@ pub struct ParseMetaData {
     /// flag is not in place properly, stack overflow and infinite recursion *will* occur.
     pub was_infix: bool,
 
+    pub progress: bool,
+
     pub path: Vec<ParseDecision>,
     pub last_path: Vec<ParseDecision>,
     pub history: Vec<Vec<ParseDecision>>,
@@ -518,7 +520,7 @@ impl Parser for NatParser {
     type Output = u64;
 
     fn parse(&self, content: &String, consume: bool, meta: ParseMetaData) -> Result<HashSet<(Self::Output, usize)>, ParseError> {
-        let (n, _) = crate::funcs::take_while(content, |c| c.is_digit(10));
+        let (n, _) = take_while(content, |c| c.is_digit(10));
         if n.len() > 0 {
             if consume && n.len() < content.len() {
                 Err("Could not consume entire content when parsing nat.".into())
@@ -763,6 +765,7 @@ impl ParseMetaData {
         ParseMetaData {
             depth: 0,
             was_infix: false,
+            progress: false,
             last_path: vec![],
             path: vec![],
             history: vec![],
@@ -799,8 +802,27 @@ impl ParseMetaData {
         meta
     }
 
+    // todo: instead of using this, find if the number of the same paths taken is greater
+    //  than some much larger unreasonable amount, like 10
     pub fn same_paths(&self) -> bool {
-        self.path == self.last_path
+        !self.path.is_empty() && self.path == self.last_path
+    }
+
+    pub fn path_repeats(&self) -> usize {
+        let mut repeats = 0;
+        let mut first_path = None;
+        for path in self.history.iter().rev() {
+            if let None = first_path {
+                first_path = Some(path);
+            } else if let Some(first_path) = first_path {
+                if first_path == path {
+                    repeats += 1;
+                } else {
+                    break;
+                }
+            }
+        }
+        repeats
     }
 
     pub fn rotate_paths(self) -> ParseMetaData {
@@ -822,12 +844,25 @@ impl ParseMetaData {
         //     None => 0
         // }
     }
+
+    pub fn no_progress(self) -> ParseMetaData {
+        let mut s = self;
+        s.progress = false;
+        s
+    }
+
+    pub fn progress(self) -> ParseMetaData {
+        let mut s = self;
+        s.progress = true;
+        s
+    }
 }
 
 
 // miscellaneous parsers (for simple things)
 
 /// describes a number of times for something.
+#[derive(Clone)]
 pub enum LengthQualifier {
     /// Exactly that many times
     /// (regex: /{x}/)

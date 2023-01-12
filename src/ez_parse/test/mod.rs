@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
 use crate::ez_parse::funcs::*;
-use crate::{Expr, LONatParser, ParseError, ParseMetaData, Parser, LOStringParser};
+use crate::{Expr, LONatParser, LOStringParser, ParseError, ParseMetaData, Parser};
 use crate::Expr::{Nat, Str};
 use crate::ez_parse::funcs::UnionResult::{Left, Right};
 use crate::ez_parse::ops::EZ;

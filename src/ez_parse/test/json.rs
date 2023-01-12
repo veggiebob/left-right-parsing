@@ -19,6 +19,8 @@ On reflection, one big weakness is the exhaustive types being used.
 The variable `parser` at the bottom has a type so long it is definitely NOT
 feasible to write out. I'm not sure if this will be a problem in the future,
 but it does seem to add baggage.
+Edit: it becomes a problem if it needs to be returned from a function... but a
+FunctionalParser can hide all the types by wrapping it in a function.
 
 Additionally, there are still sore spots where EZ doesn't make it much easier
 to add parsers together, so we have to revert to the functions. However, I
@@ -97,11 +99,11 @@ fn json_parser() {
 
     let _p = Rc::clone(&P);
     *parser.borrow().0.borrow_mut() = Box::new(move |content, consume, meta| {
-        if meta.same_paths() || meta.max_history_cycles() > 2 {
+        if !meta.progress && (meta.same_paths() || meta.max_history_cycles() > 2) {
             Err("Followed the same path more than once".into())
         } else {
             let meta = meta.rotate_paths();
-            _p.borrow().parse(content, consume, meta)
+            _p.borrow().parse(content, consume, meta.no_progress())
         }
     });
 
